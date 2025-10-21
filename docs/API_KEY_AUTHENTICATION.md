@@ -109,19 +109,20 @@ export MCP_API_KEYS="prod-key-v1,prod-key-v2,backup-key"
 ```bash
 # Store API key as a secret
 az containerapp secret set \
-  --name redis-mcp-server \
-  --resource-group myResourceGroup \
-  --secrets mcp-api-keys="key1,key2,key3"
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --secrets mcp-api-keys="my-key1,my-key2,my-key3"
 
-# Update container with API key authentication
+# Update container with API key authentication (adds to existing env vars)
 az containerapp update \
-  --name redis-mcp-server \
-  --resource-group myResourceGroup \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
   --set-env-vars \
     MCP_API_KEY_AUTH_ENABLED=true \
-  --replace-env-vars \
     MCP_API_KEYS=secretref:mcp-api-keys
 ```
+
+> **Important**: Using `--set-env-vars` adds or updates the specified variables while keeping existing ones. Don't use `--replace-env-vars` unless you want to replace ALL environment variables.
 
 ## Troubleshooting
 

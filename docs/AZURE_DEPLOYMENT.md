@@ -50,6 +50,7 @@ This guide walks you through deploying the Redis MCP Server to Azure Container A
 RESOURCE_GROUP="rg-redis-mcp"
 LOCATION="eastus"
 ACR_NAME="your-unique-acr-name"
+IMAGE_NAME="redis-mcp-server"
 
 # Create resource group
 az group create --name $RESOURCE_GROUP --location $LOCATION
@@ -62,13 +63,13 @@ az acr create --resource-group $RESOURCE_GROUP --name $ACR_NAME --sku Basic --ad
 
 ```bash
 # Build and push to ACR
-az acr build --registry $ACR_NAME --image redis-mcp-server:latest .
+az acr build --registry $ACR_NAME --image $IMAGE_NAME:latest --platform linux/amd64 .
 
 # Or build locally and push
-docker build -t redis-mcp-server .
+docker build -t $IMAGE_NAME .
 az acr login --name $ACR_NAME
-docker tag redis-mcp-server $ACR_NAME.azurecr.io/redis-mcp-server:latest
-docker push $ACR_NAME.azurecr.io/redis-mcp-server:latest
+docker tag $IMAGE_NAME $ACR_NAME.azurecr.io/$IMAGE_NAME:latest
+docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:latest
 ```
 
 #### Step 3: Create Container Apps Environment
@@ -82,23 +83,59 @@ az containerapp env create \
   --location $LOCATION
 ```
 
-#### Step 4: Deploy Container App
+#### Step 4: Create User-Assigned Managed Identity
+
+```bash
+CONTAINER_APP_NAME="redis-mcp-server"
+IDENTITY_NAME="identity-redis-mcp"
+
+# Create the managed identity
+az identity create \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION
+
+# Get identity details
+IDENTITY_ID=$(az identity show \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query id \
+  --output tsv)
+
+IDENTITY_CLIENT_ID=$(az identity show \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query clientId \
+  --output tsv)
+
+IDENTITY_PRINCIPAL_ID=$(az identity show \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query principalId \
+  --output tsv)
+
+echo "Identity Client ID: $IDENTITY_CLIENT_ID"
+echo "Identity Principal ID: $IDENTITY_PRINCIPAL_ID"
+```
+
+#### Step 5: Deploy Container App with Managed Identity
 
 ```bash
 # Get ACR credentials
 ACR_SERVER=$(az acr show --name $ACR_NAME --resource-group $RESOURCE_GROUP --query loginServer --output tsv)
 ACR_USERNAME=$(az acr credential show --name $ACR_NAME --query username --output tsv)
-ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query passwords[0].value --output tsv)
+ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query 'passwords[0].value' --output tsv)
 
-# Create container app
+# Create container app with user-assigned managed identity
 az containerapp create \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --environment $CONTAINER_APP_ENV \
-  --image $ACR_SERVER/redis-mcp-server:latest \
+  --image $ACR_SERVER/$IMAGE_NAME:latest \
   --registry-server $ACR_SERVER \
   --registry-username $ACR_USERNAME \
   --registry-password $ACR_PASSWORD \
+  --user-assigned $IDENTITY_ID \
   --target-port 8000 \
   --ingress external \
   --min-replicas 1 \
@@ -106,12 +143,32 @@ az containerapp create \
   --cpu 0.25 \
   --memory 0.5Gi \
   --env-vars \
-    REDIS_HOST=your-redis-host \
-    REDIS_PORT=6380 \
-    REDIS_PWD=your-redis-password \
+    REDIS_HOST=$REDIS_HOST \
+    REDIS_PORT=10000 \
     REDIS_SSL=true \
+    REDIS_ENTRAID_AUTH_METHOD=managed_identity \
+    REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID=$IDENTITY_CLIENT_ID \
     MCP_REDIS_LOG_LEVEL=INFO
 ```
+
+#### Step 6: Grant Redis Access to Managed Identity
+
+```bash
+# For Azure Cache for Redis Enterprise with Entra ID support
+REDIS_NAME="your-redis-cache-name"
+
+az redis access-policy-assignment create \
+  --resource-group $RESOURCE_GROUP \
+  --redis-cache-name $REDIS_NAME \
+  --access-policy-assignment-name "mcp-server-access" \
+  --access-policy-name "Data Contributor" \
+  --object-id $IDENTITY_PRINCIPAL_ID \
+  --object-id-alias "ServicePrincipal"
+
+echo "Deployment complete! Your container app is now using managed identity for Redis authentication."
+```
+
+> **Note**: If you're using Azure Cache for Redis Basic/Standard (non-Enterprise) that doesn't support Entra ID authentication, you'll need to use password-based authentication instead. Add `REDIS_PWD=your-redis-password` to the environment variables and remove the `REDIS_ENTRAID_*` variables.
 
 ## Setting up Azure Cache for Redis
 
