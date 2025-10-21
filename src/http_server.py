@@ -14,11 +14,14 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Route
+from starlette.middleware import Middleware
 from sse_starlette import EventSourceResponse
 import uvicorn
 
 from src.common.server import mcp
+from src.common.config import API_KEY_CFG
 from src.common.logging_utils import configure_logging
+from src.auth import APIKeyMiddleware
 
 # Configure logging
 configure_logging()
@@ -244,15 +247,32 @@ async def mcp_message_endpoint(request: Request) -> Response:
         )
 
 
-# Create Starlette app
-app = Starlette(
-    debug=False,
-    routes=[
-        Route("/health", health_check, methods=["GET"]),
-        Route("/sse", mcp_sse_endpoint, methods=["GET"]),
-        Route("/message", mcp_message_endpoint, methods=["POST"]),
-    ],
-)
+# Create Starlette app with API key middleware
+def create_app() -> Starlette:
+    """Create Starlette app with optional API key authentication."""
+    # Configure API key middleware
+    api_keys = None
+    if API_KEY_CFG["enabled"]:
+        api_keys = API_KEY_CFG["api_keys"]
+        if not api_keys:
+            logger.warning("API key authentication enabled but no API keys configured!")
+    
+    middleware = [
+        Middleware(APIKeyMiddleware, api_keys=api_keys)
+    ]
+    
+    return Starlette(
+        debug=False,
+        routes=[
+            Route("/health", health_check, methods=["GET"]),
+            Route("/sse", mcp_sse_endpoint, methods=["GET"]),
+            Route("/message", mcp_message_endpoint, methods=["POST"]),
+        ],
+        middleware=middleware
+    )
+
+
+app = create_app()
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8000):
@@ -269,8 +289,20 @@ def run_server(host: str = "0.0.0.0", port: int = 8000):
     logger.info(f"Starting Redis MCP HTTP/SSE Server")
     logger.info(f"Listening on {host}:{port}")
     logger.info("=" * 60)
+    
+    # Log authentication status
+    if API_KEY_CFG["enabled"]:
+        num_keys = len(API_KEY_CFG["api_keys"])
+        logger.info("🔒 API Key Authentication: ENABLED")
+        logger.info(f"   Configured API Keys: {num_keys}")
+        logger.info("   All requests must include valid X-API-Key header")
+    else:
+        logger.info("🔓 API Key Authentication: DISABLED")
+        logger.info("   All requests allowed without authentication")
+    logger.info("=" * 60)
+    
     logger.info("Available endpoints:")
-    logger.info(f"  - GET  /health   - Health check endpoint")
+    logger.info(f"  - GET  /health   - Health check endpoint (no auth required)")
     logger.info(f"  - GET  /sse      - SSE endpoint for MCP transport")
     logger.info(f"  - POST /message  - MCP JSON-RPC message endpoint")
     logger.info("=" * 60)

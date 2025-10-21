@@ -28,6 +28,13 @@ REDIS_CFG = {
     "entraid_managed_identity_client_id": os.getenv("REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID", None),
 }
 
+# API Key Authentication Configuration for HTTP Server
+API_KEY_CFG = {
+    "enabled": os.getenv("MCP_API_KEY_AUTH_ENABLED", "false").lower() in ("true", "1", "yes"),
+    # Support multiple API keys separated by comma
+    "api_keys": set(filter(None, os.getenv("MCP_API_KEYS", "").split(","))) if os.getenv("MCP_API_KEYS") else set(),
+}
+
 
 def parse_redis_uri(uri: str) -> dict:
     """Parse a Redis URI and return connection parameters."""
