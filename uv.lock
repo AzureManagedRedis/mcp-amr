@@ -1663,6 +1663,7 @@ dependencies = [
     { name = "mcp", extra = ["cli"] },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "redis" },
     { name = "redis-entraid" },
 ]
@@ -1695,6 +1696,7 @@ requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.9.4" },
     { name = "numpy", specifier = ">=2.2.4" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.8.0" },
     { name = "redis", specifier = ">=6.0.0" },
     { name = "redis-entraid", specifier = ">=1.0.0" },
 ]

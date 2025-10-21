@@ -8,21 +8,119 @@ import asyncio
 import json
 import logging
 import inspect
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 from starlette.routing import Route
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from sse_starlette import EventSourceResponse
 import uvicorn
 
 from src.common.server import mcp
+from src.common.config import OAUTH_CFG
 from src.common.logging_utils import configure_logging
 
 # Configure logging
 configure_logging()
 logger = logging.getLogger(__name__)
+
+
+class BearerAuthMiddleware(BaseHTTPMiddleware):
+    """Middleware to validate Bearer tokens for OAuth-protected endpoints."""
+    
+    def __init__(self, app, token_verifier=None):
+        super().__init__(app)
+        self.token_verifier = token_verifier
+        self.oauth_enabled = OAUTH_CFG.get("enabled", False)
+        
+        if self.oauth_enabled:
+            logger.info("OAuth authentication enabled for HTTP server")
+        else:
+            logger.info("OAuth authentication disabled for HTTP server")
+    
+    async def dispatch(self, request: Request, call_next):
+        """Validate Bearer token before processing request."""
+        # Skip auth for health check
+        if request.url.path == "/health":
+            return await call_next(request)
+        
+        # If OAuth is disabled, allow all requests
+        if not self.oauth_enabled or not self.token_verifier:
+            return await call_next(request)
+        
+        # Extract Bearer token from Authorization header
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            logger.warning(f"Missing Authorization header from {request.client.host if request.client else 'unknown'}")
+            return JSONResponse(
+                content={
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {
+                        "code": -32001,
+                        "message": "Missing Authorization header"
+                    }
+                },
+                status_code=401
+            )
+        
+        # Parse Bearer token
+        parts = auth_header.split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            logger.warning(f"Invalid Authorization header format from {request.client.host if request.client else 'unknown'}")
+            return JSONResponse(
+                content={
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {
+                        "code": -32001,
+                        "message": "Invalid Authorization header format. Expected: Bearer <token>"
+                    }
+                },
+                status_code=401
+            )
+        
+        token = parts[1]
+        
+        # Verify token
+        try:
+            access_token = await self.token_verifier.verify_token(token)
+            if not access_token:
+                logger.warning(f"Invalid or expired token from {request.client.host if request.client else 'unknown'}")
+                return JSONResponse(
+                    content={
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {
+                            "code": -32001,
+                            "message": "Invalid or expired access token"
+                        }
+                    },
+                    status_code=401
+                )
+            
+            # Token is valid, store it in request state for potential use
+            request.state.access_token = access_token
+            logger.info(f"Authenticated request from client {access_token.client_id} with scopes: {access_token.scopes}")
+            
+        except Exception as e:
+            logger.error(f"Token verification error: {e}", exc_info=True)
+            return JSONResponse(
+                content={
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {
+                        "code": -32001,
+                        "message": f"Token verification failed: {str(e)}"
+                    }
+                },
+                status_code=401
+            )
+        
+        return await call_next(request)
 
 
 async def get_tools_list() -> List[Dict[str, Any]]:
@@ -244,15 +342,40 @@ async def mcp_message_endpoint(request: Request) -> Response:
         )
 
 
-# Create Starlette app
-app = Starlette(
-    debug=False,
-    routes=[
-        Route("/health", health_check, methods=["GET"]),
-        Route("/sse", mcp_sse_endpoint, methods=["GET"]),
-        Route("/message", mcp_message_endpoint, methods=["POST"]),
-    ],
-)
+# Create Starlette app with OAuth middleware
+def create_app() -> Starlette:
+    """Create Starlette app with optional OAuth middleware."""
+    # Import token verifier if OAuth is enabled
+    token_verifier = None
+    if OAUTH_CFG.get("enabled", False):
+        try:
+            from src.auth.entra_token_verifier import EntraIDTokenVerifier
+            token_verifier = EntraIDTokenVerifier(
+                tenant_id=OAUTH_CFG["tenant_id"],
+                client_id=OAUTH_CFG["client_id"],
+                required_scopes=OAUTH_CFG.get("required_scopes", [])
+            )
+            logger.info("EntraIDTokenVerifier initialized for HTTP server")
+        except Exception as e:
+            logger.error(f"Failed to initialize OAuth token verifier: {e}", exc_info=True)
+            raise
+    
+    middleware = [
+        Middleware(BearerAuthMiddleware, token_verifier=token_verifier)
+    ]
+    
+    return Starlette(
+        debug=False,
+        routes=[
+            Route("/health", health_check, methods=["GET"]),
+            Route("/sse", mcp_sse_endpoint, methods=["GET"]),
+            Route("/message", mcp_message_endpoint, methods=["POST"]),
+        ],
+        middleware=middleware
+    )
+
+
+app = create_app()
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8000):
@@ -269,8 +392,22 @@ def run_server(host: str = "0.0.0.0", port: int = 8000):
     logger.info(f"Starting Redis MCP HTTP/SSE Server")
     logger.info(f"Listening on {host}:{port}")
     logger.info("=" * 60)
+    
+    # Log OAuth status
+    if OAUTH_CFG.get("enabled", False):
+        logger.info("🔒 OAuth Authentication: ENABLED")
+        logger.info(f"   Tenant ID: {OAUTH_CFG.get('tenant_id')}")
+        logger.info(f"   Client ID: {OAUTH_CFG.get('client_id')}")
+        if OAUTH_CFG.get('required_scopes'):
+            logger.info(f"   Required Scopes: {', '.join(OAUTH_CFG['required_scopes'])}")
+        logger.info("   All requests must include valid Bearer token")
+    else:
+        logger.info("🔓 OAuth Authentication: DISABLED")
+        logger.info("   All requests allowed without authentication")
+    logger.info("=" * 60)
+    
     logger.info("Available endpoints:")
-    logger.info(f"  - GET  /health   - Health check endpoint")
+    logger.info(f"  - GET  /health   - Health check endpoint (no auth required)")
     logger.info(f"  - GET  /sse      - SSE endpoint for MCP transport")
     logger.info(f"  - POST /message  - MCP JSON-RPC message endpoint")
     logger.info("=" * 60)

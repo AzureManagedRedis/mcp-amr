@@ -155,11 +155,131 @@ echo "Redis Key: $REDIS_KEY"
 | `REDIS_DB` | Database number | `0` | `0` |
 | `MCP_REDIS_LOG_LEVEL` | Log level | `WARNING` | `INFO` |
 
+### MCP Server OAuth Authentication (Protect MCP Endpoints)
+
+Protect your MCP server endpoints with Microsoft Entra ID OAuth authentication. Clients must present valid access tokens to use the MCP tools.
+
+#### Environment Variables for MCP OAuth
+
+| Variable | Description | Required | Example |
+|----------|-------------|----------|---------|
+| `MCP_OAUTH_ENABLED` | Enable OAuth authentication | Yes | `true` |
+| `MCP_OAUTH_TENANT_ID` | Entra ID tenant ID | Yes | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| `MCP_OAUTH_CLIENT_ID` | Application (client) ID | Yes | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| `MCP_OAUTH_REQUIRED_SCOPES` | Required OAuth scopes (comma-separated) | No | `api://your-app-id/.default` or `MCP.Read,MCP.Write` |
+
+#### Setup Instructions
+
+**1. Register Application in Entra ID:**
+
+```bash
+# Create app registration
+az ad app create \
+  --display-name "Redis MCP Server" \
+  --sign-in-audience AzureADMyOrg
+
+# Get the app ID
+APP_ID=$(az ad app list --display-name "Redis MCP Server" --query [0].appId -o tsv)
+
+# Expose an API and add scopes
+az ad app update --id $APP_ID \
+  --identifier-uris "api://$APP_ID"
+
+# Add application roles (optional)
+cat > roles.json << 'EOF'
+{
+  "appRoles": [
+    {
+      "allowedMemberTypes": ["User", "Application"],
+      "description": "Read access to MCP tools",
+      "displayName": "MCP.Read",
+      "id": "$(uuidgen)",
+      "isEnabled": true,
+      "value": "MCP.Read"
+    },
+    {
+      "allowedMemberTypes": ["User", "Application"],
+      "description": "Full access to MCP tools",
+      "displayName": "MCP.Write",
+      "id": "$(uuidgen)",
+      "isEnabled": true,
+      "value": "MCP.Write"
+    }
+  ]
+}
+EOF
+
+az ad app update --id $APP_ID --app-roles @roles.json
+```
+
+**2. Deploy with OAuth Enabled:**
+
+```bash
+# Get your tenant ID
+TENANT_ID=$(az account show --query tenantId -o tsv)
+
+# Deploy container app with OAuth
+az containerapp update \
+  --name redis-mcp-server \
+  --resource-group $RESOURCE_GROUP \
+  --set-env-vars \
+    MCP_OAUTH_ENABLED=true \
+    MCP_OAUTH_TENANT_ID=$TENANT_ID \
+    MCP_OAUTH_CLIENT_ID=$APP_ID \
+    MCP_OAUTH_REQUIRED_SCOPES="MCP.Read,MCP.Write"
+```
+
+**3. Create a Test Client and Get Token:**
+
+```bash
+# Create a test client application
+TEST_CLIENT_ID=$(az ad app create \
+  --display-name "MCP Test Client" \
+  --query appId -o tsv)
+
+# Create a client secret
+TEST_CLIENT_SECRET=$(az ad app credential reset \
+  --id $TEST_CLIENT_ID \
+  --query password -o tsv)
+
+# Add API permission to the test client
+API_PERMISSION_ID=$(az ad app show --id $APP_ID --query "api.oauth2PermissionScopes[0].id" -o tsv)
+az ad app permission add \
+  --id $TEST_CLIENT_ID \
+  --api $APP_ID \
+  --api-permissions $API_PERMISSION_ID=Scope
+
+# Grant admin consent
+az ad app permission admin-consent --id $TEST_CLIENT_ID
+
+# Get an access token
+TOKEN=$(curl -s -X POST \
+  "https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token" \
+  -d "client_id=$TEST_CLIENT_ID" \
+  -d "client_secret=$TEST_CLIENT_SECRET" \
+  -d "scope=api://$APP_ID/.default" \
+  -d "grant_type=client_credentials" \
+  | jq -r .access_token)
+
+# Call MCP endpoint with token
+curl -X POST https://your-app.azurecontainerapps.io/message \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+    "params": {}
+  }'
+```
+
+**Note:** The error `AADSTS650057: Invalid resource` means the Azure CLI doesn't have permission to request tokens for your custom API. The solution above creates a dedicated test client application that has the proper permissions.
+
 ### Entra ID Authentication (Recommended for Azure Cache for Redis Enterprise)
 
 Azure Cache for Redis Enterprise supports Microsoft Entra ID (formerly Azure AD) authentication, providing better security without managing passwords.
 
-#### Environment Variables for Entra ID
+#### Environment Variables for Redis Entra ID
 
 | Variable | Description | Required | Example |
 |----------|-------------|----------|---------|

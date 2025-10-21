@@ -28,6 +28,14 @@ REDIS_CFG = {
     "entraid_managed_identity_client_id": os.getenv("REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID", None),
 }
 
+# OAuth / MCP Server Authentication Configuration
+OAUTH_CFG = {
+    "enabled": os.getenv("MCP_OAUTH_ENABLED", "false").lower() in ("true", "1", "yes"),
+    "tenant_id": os.getenv("MCP_OAUTH_TENANT_ID", None),
+    "client_id": os.getenv("MCP_OAUTH_CLIENT_ID", None),
+    "required_scopes": os.getenv("MCP_OAUTH_REQUIRED_SCOPES", "").split(",") if os.getenv("MCP_OAUTH_REQUIRED_SCOPES") else [],
+}
+
 
 def parse_redis_uri(uri: str) -> dict:
     """Parse a Redis URI and return connection parameters."""
