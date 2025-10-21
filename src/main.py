@@ -38,6 +38,15 @@ class RedisMCPServer:
 )
 @click.option("--ssl-ca-certs", help="Path to CA certificates file")
 @click.option("--cluster-mode", is_flag=True, help="Enable Redis cluster mode")
+@click.option(
+    "--entraid-auth-method",
+    type=click.Choice(["service_principal", "managed_identity", "default_azure_credential"], case_sensitive=False),
+    help="Entra ID authentication method (service_principal, managed_identity, or default_azure_credential)"
+)
+@click.option("--entraid-tenant-id", help="Entra ID tenant ID (for service_principal)")
+@click.option("--entraid-client-id", help="Entra ID client ID (for service_principal)")
+@click.option("--entraid-cert-path", help="Path to Entra ID certificate file (for service_principal)")
+@click.option("--entraid-managed-identity-client-id", help="Managed identity client ID (for user-assigned managed_identity)")
 def cli(
     url,
     host,
@@ -52,6 +61,11 @@ def cli(
     ssl_cert_reqs,
     ssl_ca_certs,
     cluster_mode,
+    entraid_auth_method,
+    entraid_tenant_id,
+    entraid_client_id,
+    entraid_cert_path,
+    entraid_managed_identity_client_id,
 ):
     """Redis MCP Server - Model Context Protocol server for Redis."""
 
@@ -89,6 +103,18 @@ def cli(
             config["ssl_cert_reqs"] = ssl_cert_reqs
         if ssl_ca_certs:
             config["ssl_ca_certs"] = ssl_ca_certs
+        
+        # Add Entra ID authentication parameters
+        if entraid_auth_method:
+            config["entraid_auth_method"] = entraid_auth_method
+        if entraid_tenant_id:
+            config["entraid_tenant_id"] = entraid_tenant_id
+        if entraid_client_id:
+            config["entraid_client_id"] = entraid_client_id
+        if entraid_cert_path:
+            config["entraid_cert_path"] = entraid_cert_path
+        if entraid_managed_identity_client_id:
+            config["entraid_managed_identity_client_id"] = entraid_managed_identity_client_id
 
         set_redis_config_from_cli(config)
 

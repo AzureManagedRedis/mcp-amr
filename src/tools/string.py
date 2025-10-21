@@ -1,10 +1,11 @@
 import json
+import logging
 from typing import Union, Optional
 
 from redis.exceptions import RedisError
 from redis import Redis
 
-from src.common.connection import RedisConnectionManager
+from src.common.connection import RedisConnectionManager, run_redis_command
 from src.common.server import mcp
 
 
@@ -36,10 +37,12 @@ async def set(
 
     try:
         r: Redis = RedisConnectionManager.get_connection()
+        
+        # Run the blocking Redis call in an executor to avoid blocking the event loop
         if expiration:
-            r.setex(key, expiration, encoded_value)
+            await run_redis_command(r.setex, key, expiration, encoded_value)
         else:
-            r.set(key, encoded_value)
+            await run_redis_command(r.set, key, encoded_value)
 
         return f"Successfully set {key}" + (
             f" with expiration {expiration} seconds" if expiration else ""
@@ -58,9 +61,16 @@ async def get(key: str) -> Union[str, bytes]:
     Returns:
         str, bytes: The stored value or an error message.
     """
+    _logger = logging.getLogger(__name__)
+    
     try:
+        _logger.debug("Getting Redis connection for key: %s", key)
         r: Redis = RedisConnectionManager.get_connection()
-        value = r.get(key)
+        _logger.debug("Got Redis connection object, executing GET command")
+        
+        # Run the blocking Redis call in an executor to avoid blocking the event loop
+        value = await run_redis_command(r.get, key)
+        _logger.debug("GET command completed, value retrieved")
 
         if value is None:
             return f"Key {key} does not exist"
@@ -74,4 +84,8 @@ async def get(key: str) -> Union[str, bytes]:
 
         return value
     except RedisError as e:
+        _logger.error("Redis error retrieving key %s: %s", key, str(e))
         return f"Error retrieving key {key}: {str(e)}"
+    except Exception as e:
+        _logger.error("Unexpected error retrieving key %s: %s", key, str(e))
+        return f"Unexpected error retrieving key {key}: {str(e)}"

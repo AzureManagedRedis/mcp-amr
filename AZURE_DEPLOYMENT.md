@@ -155,9 +155,164 @@ echo "Redis Key: $REDIS_KEY"
 | `REDIS_DB` | Database number | `0` | `0` |
 | `MCP_REDIS_LOG_LEVEL` | Log level | `WARNING` | `INFO` |
 
+### Entra ID Authentication (Recommended for Azure Cache for Redis Enterprise)
+
+Azure Cache for Redis Enterprise supports Microsoft Entra ID (formerly Azure AD) authentication, providing better security without managing passwords.
+
+#### Environment Variables for Entra ID
+
+| Variable | Description | Required | Example |
+|----------|-------------|----------|---------|
+| `REDIS_ENTRAID_AUTH_METHOD` | Authentication method | Yes | `managed_identity`, `service_principal`, or `default_azure_credential` |
+| `REDIS_ENTRAID_TENANT_ID` | Tenant ID | For service_principal | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| `REDIS_ENTRAID_CLIENT_ID` | Application (client) ID | For service_principal | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| `REDIS_ENTRAID_CERT_PATH` | Path to certificate file | For service_principal | `/app/cert.pem` |
+| `REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID` | Managed identity client ID | For user-assigned MI | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+
+#### Authentication Methods
+
+**1. Managed Identity (Recommended for Container Apps):**
+
+**Option A: System-Assigned Managed Identity**
+
+```bash
+# Enable system-assigned managed identity
+az containerapp identity assign \
+  --name redis-mcp-server \
+  --resource-group $RESOURCE_GROUP \
+  --system-assigned
+
+# Get the principal ID
+PRINCIPAL_ID=$(az containerapp identity show \
+  --name redis-mcp-server \
+  --resource-group $RESOURCE_GROUP \
+  --query principalId \
+  --output tsv)
+
+# Grant Redis access to the managed identity
+az redis access-policy-assignment create \
+  --resource-group $RESOURCE_GROUP \
+  --redis-cache-name $REDIS_NAME \
+  --access-policy-assignment-name "mcp-server-access" \
+  --access-policy-name "Data Contributor" \
+  --object-id $PRINCIPAL_ID \
+  --object-id-alias "ServicePrincipal"
+
+# Deploy with managed identity authentication
+az containerapp update \
+  --name redis-mcp-server \
+  --resource-group $RESOURCE_GROUP \
+  --set-env-vars \
+    REDIS_HOST=your-redis-host \
+    REDIS_PORT=6380 \
+    REDIS_SSL=true \
+    REDIS_ENTRAID_AUTH_METHOD=managed_identity
+```
+
+**Option B: User-Assigned Managed Identity**
+
+```bash
+# Create a user-assigned managed identity
+IDENTITY_NAME="identity-redis-mcp"
+az identity create \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION
+
+# Get the identity details
+IDENTITY_ID=$(az identity show \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query id \
+  --output tsv)
+
+IDENTITY_CLIENT_ID=$(az identity show \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query clientId \
+  --output tsv)
+
+IDENTITY_PRINCIPAL_ID=$(az identity show \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query principalId \
+  --output tsv)
+
+# Assign the user-assigned identity to the container app
+az containerapp identity assign \
+  --name redis-mcp-server \
+  --resource-group $RESOURCE_GROUP \
+  --user-assigned $IDENTITY_ID
+
+# Grant Redis access to the user-assigned managed identity
+az redis access-policy-assignment create \
+  --resource-group $RESOURCE_GROUP \
+  --redis-cache-name $REDIS_NAME \
+  --access-policy-assignment-name "mcp-server-access" \
+  --access-policy-name "Data Contributor" \
+  --object-id $IDENTITY_PRINCIPAL_ID \
+  --object-id-alias "ServicePrincipal"
+
+# Deploy with user-assigned managed identity authentication
+az containerapp update \
+  --name redis-mcp-server \
+  --resource-group $RESOURCE_GROUP \
+  --set-env-vars \
+    REDIS_HOST=your-redis-host \
+    REDIS_PORT=6380 \
+    REDIS_SSL=true \
+    REDIS_ENTRAID_AUTH_METHOD=managed_identity \
+    REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID=$IDENTITY_CLIENT_ID
+```
+
+**2. Service Principal (Certificate-based):**
+
+```bash
+# Create service principal
+az ad sp create-for-rbac --name "redis-mcp-sp" --create-cert
+
+# Upload certificate as secret (assuming cert is in cert.pem)
+az containerapp secret set \
+  --name redis-mcp-server \
+  --resource-group $RESOURCE_GROUP \
+  --secrets cert-file="$(cat cert.pem | base64)"
+
+# Deploy with service principal authentication
+az containerapp update \
+  --name redis-mcp-server \
+  --resource-group $RESOURCE_GROUP \
+  --set-env-vars \
+    REDIS_HOST=your-redis-host \
+    REDIS_PORT=6380 \
+    REDIS_SSL=true \
+    REDIS_ENTRAID_AUTH_METHOD=service_principal \
+    REDIS_ENTRAID_TENANT_ID=your-tenant-id \
+    REDIS_ENTRAID_CLIENT_ID=your-client-id \
+    REDIS_ENTRAID_CERT_PATH=/mnt/secrets/cert-file
+```
+
+**3. DefaultAzureCredential (Tries multiple methods):**
+
+```bash
+az containerapp update \
+  --name redis-mcp-server \
+  --resource-group $RESOURCE_GROUP \
+  --set-env-vars \
+    REDIS_HOST=your-redis-host \
+    REDIS_PORT=6380 \
+    REDIS_SSL=true \
+    REDIS_ENTRAID_AUTH_METHOD=default_azure_credential
+```
+
 ### Security Best Practices
 
-1. **Use Azure Key Vault** for storing Redis passwords:
+1. **Use Entra ID Authentication** (Recommended for Azure Cache for Redis Enterprise):
+   - ✅ No password management needed
+   - ✅ Automatic token rotation
+   - ✅ Better audit trail
+   - ✅ Works with Azure RBAC
+
+2. **Use Azure Key Vault** for storing Redis passwords (if not using Entra ID):
    ```bash
    # Create Key Vault
    az keyvault create --name "kv-redis-mcp" --resource-group $RESOURCE_GROUP --location $LOCATION

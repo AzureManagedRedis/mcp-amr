@@ -18,6 +18,14 @@ REDIS_CFG = {
     "ssl_ca_certs": os.getenv("REDIS_SSL_CA_CERTS", None),
     "cluster_mode": os.getenv("REDIS_CLUSTER_MODE", False) in ("true", "1", "t"),
     "db": int(os.getenv("REDIS_DB", 0)),
+    # Entra ID authentication configuration
+    # If REDIS_ENTRAID_AUTH_METHOD is not set, fall back to password authentication
+    # Valid values: "service_principal", "managed_identity", "default_azure_credential"
+    "entraid_auth_method": os.getenv("REDIS_ENTRAID_AUTH_METHOD", None),
+    "entraid_tenant_id": os.getenv("REDIS_ENTRAID_TENANT_ID", None),
+    "entraid_client_id": os.getenv("REDIS_ENTRAID_CLIENT_ID", None),
+    "entraid_cert_path": os.getenv("REDIS_ENTRAID_CERT_PATH", None),
+    "entraid_managed_identity_client_id": os.getenv("REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID", None),
 }
 
 
