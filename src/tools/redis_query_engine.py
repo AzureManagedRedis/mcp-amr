@@ -7,7 +7,7 @@ from redis.commands.search.index_definition import IndexDefinition
 from redis.commands.search.query import Query
 from redis.exceptions import RedisError
 
-from src.common.connection import RedisConnectionManager
+from src.common.connection import RedisConnectionManager, run_redis_command
 from src.common.server import mcp
 
 
@@ -20,7 +20,8 @@ async def get_indexes() -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        return json.dumps(r.execute_command("FT._LIST"))
+        result = await run_redis_command(r.execute_command, "FT._LIST")
+        return json.dumps(result)
     except RedisError as e:
         return f"Error retrieving indexes: {str(e)}"
 
@@ -37,7 +38,7 @@ async def get_index_info(index_name: str) -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        info = r.ft(index_name).info()
+        info = await run_redis_command(r.ft(index_name).info)
         return json.dumps(info, ensure_ascii=False, indent=2)
     except RedisError as e:
         return f"Error retrieving index info: {str(e)}"
@@ -55,7 +56,8 @@ async def get_indexed_keys_number(index_name: str) -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        total = r.ft(index_name).search(Query("*")).total
+        result = await run_redis_command(r.ft(index_name).search, Query("*"))
+        total = result.total
         return str(total)
     except RedisError as e:
         return f"Error retrieving number of keys: {str(e)}"
@@ -95,7 +97,7 @@ async def create_vector_index_hash(
             {"TYPE": "FLOAT32", "DIM": dim, "DISTANCE_METRIC": distance_metric},
         )
 
-        r.ft(index_name).create_index([schema], definition=index_def)
+        await run_redis_command(r.ft(index_name).create_index, [schema], definition=index_def)
         return f"Index '{index_name}' created successfully."
     except RedisError as e:
         return f"Error creating index '{index_name}': {str(e)}"
@@ -139,8 +141,10 @@ async def vector_search_hash(
         )
 
         # Perform the search with vector parameter
-        results = r.ft(index_name).search(
-            query, query_params={"vec_param": vector_blob}
+        results = await run_redis_command(
+            r.ft(index_name).search,
+            query,
+            query_params={"vec_param": vector_blob}
         )
 
         # Format and return the results

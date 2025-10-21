@@ -2,7 +2,7 @@ from typing import Any, Dict, Union, List
 
 from redis.exceptions import RedisError
 
-from src.common.connection import RedisConnectionManager
+from src.common.connection import RedisConnectionManager, run_redis_command
 from src.common.server import mcp
 
 
@@ -18,7 +18,7 @@ async def delete(key: str) -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        result = r.delete(key)
+        result = await run_redis_command(r.delete, key)
         return f"Successfully deleted {key}" if result else f"Key {key} not found"
     except RedisError as e:
         return f"Error deleting key {key}: {str(e)}"
@@ -36,8 +36,9 @@ async def type(key: str) -> Dict[str, Any]:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        key_type = r.type(key)
-        info = {"key": key, "type": key_type, "ttl": r.ttl(key)}
+        key_type = await run_redis_command(r.type, key)
+        ttl = await run_redis_command(r.ttl, key)
+        info = {"key": key, "type": key_type, "ttl": ttl}
 
         return info
     except RedisError as e:
@@ -57,7 +58,7 @@ async def expire(name: str, expire_seconds: int) -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        success = r.expire(name, expire_seconds)
+        success = await run_redis_command(r.expire, name, expire_seconds)
         return (
             f"Expiration set to {expire_seconds} seconds for '{name}'."
             if success
@@ -85,11 +86,12 @@ async def rename(old_key: str, new_key: str) -> Dict[str, Any]:
         r = RedisConnectionManager.get_connection()
 
         # Check if the old key exists
-        if not r.exists(old_key):
+        exists = await run_redis_command(r.exists, old_key)
+        if not exists:
             return {"error": f"Key '{old_key}' does not exist."}
 
         # Rename the key
-        r.rename(old_key, new_key)
+        await run_redis_command(r.rename, old_key, new_key)
         return {
             "status": "success",
             "message": f"Renamed key '{old_key}' to '{new_key}'",
@@ -136,7 +138,7 @@ async def scan_keys(
     """
     try:
         r = RedisConnectionManager.get_connection()
-        cursor, keys = r.scan(cursor=cursor, match=pattern, count=count)
+        cursor, keys = await run_redis_command(r.scan, cursor=cursor, match=pattern, count=count)
 
         # Convert bytes to strings if needed
         decoded_keys = [
@@ -179,7 +181,7 @@ async def scan_all_keys(
         cursor = 0
 
         while True:
-            cursor, keys = r.scan(cursor=cursor, match=pattern, count=batch_size)
+            cursor, keys = await run_redis_command(r.scan, cursor=cursor, match=pattern, count=batch_size)
 
             # Convert bytes to strings if needed and add to results
             decoded_keys = [

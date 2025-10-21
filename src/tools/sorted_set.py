@@ -2,7 +2,7 @@ from typing import Optional
 
 from redis.exceptions import RedisError
 
-from src.common.connection import RedisConnectionManager
+from src.common.connection import RedisConnectionManager, run_redis_command
 from src.common.server import mcp
 
 
@@ -23,9 +23,9 @@ async def zadd(
     """
     try:
         r = RedisConnectionManager.get_connection()
-        r.zadd(key, {member: score})
+        await run_redis_command(r.zadd, key, {member: score})
         if expiration:
-            r.expire(key, expiration)
+            await run_redis_command(r.expire, key, expiration)
         return f"Successfully added {member} to {key} with score {score}" + (
             f" and expiration {expiration} seconds" if expiration else ""
         )
@@ -48,7 +48,7 @@ async def zrange(key: str, start: int, end: int, with_scores: bool = False) -> s
     """
     try:
         r = RedisConnectionManager.get_connection()
-        members = r.zrange(key, start, end, withscores=with_scores)
+        members = await run_redis_command(r.zrange, key, start, end, withscores=with_scores)
         return (
             str(members) if members else f"Sorted set {key} is empty or does not exist"
         )
@@ -69,7 +69,7 @@ async def zrem(key: str, member: str) -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        result = r.zrem(key, member)
+        result = await run_redis_command(r.zrem, key, member)
         return (
             f"Successfully removed {member} from {key}"
             if result

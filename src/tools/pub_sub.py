@@ -1,6 +1,6 @@
 from redis.exceptions import RedisError
 
-from src.common.connection import RedisConnectionManager
+from src.common.connection import RedisConnectionManager, run_redis_command
 from src.common.server import mcp
 
 
@@ -17,7 +17,7 @@ async def publish(channel: str, message: str) -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        r.publish(channel, message)
+        await run_redis_command(r.publish, channel, message)
         return f"Message published to channel '{channel}'."
     except RedisError as e:
         return f"Error publishing message to channel '{channel}': {str(e)}"
@@ -35,8 +35,8 @@ async def subscribe(channel: str) -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        pubsub = r.pubsub()
-        pubsub.subscribe(channel)
+        pubsub = await run_redis_command(r.pubsub)
+        await run_redis_command(pubsub.subscribe, channel)
         return f"Subscribed to channel '{channel}'."
     except RedisError as e:
         return f"Error subscribing to channel '{channel}': {str(e)}"
@@ -54,8 +54,8 @@ async def unsubscribe(channel: str) -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        pubsub = r.pubsub()
-        pubsub.unsubscribe(channel)
+        pubsub = await run_redis_command(r.pubsub)
+        await run_redis_command(pubsub.unsubscribe, channel)
         return f"Unsubscribed from channel '{channel}'."
     except RedisError as e:
         return f"Error unsubscribing from channel '{channel}': {str(e)}"

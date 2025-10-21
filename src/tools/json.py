@@ -3,7 +3,7 @@ from typing import Optional
 from redis.exceptions import RedisError
 from pydantic_core import core_schema
 
-from src.common.connection import RedisConnectionManager
+from src.common.connection import RedisConnectionManager, run_redis_command
 from src.common.server import mcp
 
 
@@ -53,10 +53,10 @@ async def json_set(
     """
     try:
         r = RedisConnectionManager.get_connection()
-        r.json().set(name, path, value)
+        await run_redis_command(r.json().set, name, path, value)
 
         if expire_seconds is not None:
-            r.expire(name, expire_seconds)
+            await run_redis_command(r.expire, name, expire_seconds)
 
         return f"JSON value set at path '{path}' in '{name}'." + (
             f" Expires in {expire_seconds} seconds." if expire_seconds else ""
@@ -78,7 +78,7 @@ async def json_get(name: str, path: str = "$") -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        value = r.json().get(name, path)
+        value = await run_redis_command(r.json().get, name, path)
         if value is not None:
             # Convert the value to JSON string for consistent return type
             return json.dumps(value, ensure_ascii=False, indent=2)
@@ -101,7 +101,7 @@ async def json_del(name: str, path: str = "$") -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        deleted = r.json().delete(name, path)
+        deleted = await run_redis_command(r.json().delete, name, path)
         return (
             f"Deleted JSON value at path '{path}' in '{name}'."
             if deleted

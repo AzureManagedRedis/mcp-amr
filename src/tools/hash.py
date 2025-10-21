@@ -3,7 +3,7 @@ from typing import List, Union, Optional
 import numpy as np
 from redis.exceptions import RedisError
 
-from src.common.connection import RedisConnectionManager
+from src.common.connection import RedisConnectionManager, run_redis_command
 from src.common.server import mcp
 
 
@@ -24,10 +24,10 @@ async def hset(
     """
     try:
         r = RedisConnectionManager.get_connection()
-        r.hset(name, key, str(value))
+        await run_redis_command(r.hset, name, key, str(value))
 
         if expire_seconds is not None:
-            r.expire(name, expire_seconds)
+            await run_redis_command(r.expire, name, expire_seconds)
 
         return f"Field '{key}' set successfully in hash '{name}'." + (
             f" Expires in {expire_seconds} seconds." if expire_seconds else ""
@@ -49,7 +49,7 @@ async def hget(name: str, key: str) -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        value = r.hget(name, key)
+        value = await run_redis_command(r.hget, name, key)
         return value if value else f"Field '{key}' not found in hash '{name}'."
     except RedisError as e:
         return f"Error getting field '{key}' from hash '{name}': {str(e)}"
@@ -68,7 +68,7 @@ async def hdel(name: str, key: str) -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        deleted = r.hdel(name, key)
+        deleted = await run_redis_command(r.hdel, name, key)
         return (
             f"Field '{key}' deleted from hash '{name}'."
             if deleted
@@ -90,7 +90,7 @@ async def hgetall(name: str) -> dict:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        hash_data = r.hgetall(name)
+        hash_data = await run_redis_command(r.hgetall, name)
         return (
             {k: v for k, v in hash_data.items()}
             if hash_data
@@ -113,7 +113,7 @@ async def hexists(name: str, key: str) -> bool:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        return r.hexists(name, key)
+        return await run_redis_command(r.hexists, name, key)
     except RedisError as e:
         return f"Error checking existence of field '{key}' in hash '{name}': {str(e)}"
 
@@ -139,7 +139,7 @@ async def set_vector_in_hash(
         vector_array = np.array(vector, dtype=np.float32)
         binary_blob = vector_array.tobytes()
 
-        r.hset(name, vector_field, binary_blob)
+        await run_redis_command(r.hset, name, vector_field, binary_blob)
         return True
     except RedisError as e:
         return f"Error storing vector in hash '{name}' with field '{vector_field}': {str(e)}"
@@ -160,7 +160,7 @@ async def get_vector_from_hash(name: str, vector_field: str = "vector"):
         r = RedisConnectionManager.get_connection(decode_responses=False)
 
         # Retrieve the binary blob stored in the hash
-        binary_blob = r.hget(name, vector_field)
+        binary_blob = await run_redis_command(r.hget, name, vector_field)
 
         if binary_blob:
             # Convert the binary blob back to a NumPy array (assuming it's stored as float32)

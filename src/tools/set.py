@@ -2,7 +2,7 @@ from typing import Union, List, Optional
 
 from redis.exceptions import RedisError
 
-from src.common.connection import RedisConnectionManager
+from src.common.connection import RedisConnectionManager, run_redis_command
 from src.common.server import mcp
 
 
@@ -20,10 +20,10 @@ async def sadd(name: str, value: str, expire_seconds: Optional[int] = None) -> s
     """
     try:
         r = RedisConnectionManager.get_connection()
-        r.sadd(name, value)
+        await run_redis_command(r.sadd, name, value)
 
         if expire_seconds is not None:
-            r.expire(name, expire_seconds)
+            await run_redis_command(r.expire, name, expire_seconds)
 
         return f"Value '{value}' added successfully to set '{name}'." + (
             f" Expires in {expire_seconds} seconds." if expire_seconds else ""
@@ -45,7 +45,7 @@ async def srem(name: str, value: str) -> str:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        removed = r.srem(name, value)
+        removed = await run_redis_command(r.srem, name, value)
         return (
             f"Value '{value}' removed from set '{name}'."
             if removed
@@ -67,7 +67,7 @@ async def smembers(name: str) -> Union[str, List[str]]:
     """
     try:
         r = RedisConnectionManager.get_connection()
-        members = r.smembers(name)
+        members = await run_redis_command(r.smembers, name)
         return list(members) if members else f"Set '{name}' is empty or does not exist."
     except RedisError as e:
         return f"Error retrieving members of set '{name}': {str(e)}"
