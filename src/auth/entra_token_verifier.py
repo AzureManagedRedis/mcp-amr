@@ -98,17 +98,41 @@ class EntraIDTokenVerifier(TokenVerifier):
             else:
                 _logger.warning("Token has no 'scp' or 'roles' claim")
             
-            # Verify required scopes
+            # Verify required scopes with flexible matching
             if self.required_scopes:
                 token_scopes_set = set(scopes)
                 required_scopes_set = set(self.required_scopes)
-                if not required_scopes_set.issubset(token_scopes_set):
-                    _logger.warning(
-                        "Token missing required scopes. Required: %s, Present: %s",
-                        required_scopes_set,
-                        token_scopes_set
-                    )
-                    return None
+                
+                # Check if exact scopes match first
+                if required_scopes_set.issubset(token_scopes_set):
+                    _logger.debug("Exact scope match found")
+                else:
+                    # Try flexible matching for common patterns:
+                    # - "MCP.Read" matches "User.MCP.Read" 
+                    # - "MCP.Write" matches "User.MCP.Write"
+                    flexible_match = True
+                    for required_scope in required_scopes_set:
+                        # Check if any token scope ends with the required scope
+                        # or if any token scope matches "User.{required_scope}"
+                        scope_found = any(
+                            token_scope == required_scope or
+                            token_scope == f"User.{required_scope}" or
+                            token_scope.endswith(f".{required_scope}")
+                            for token_scope in token_scopes_set
+                        )
+                        if not scope_found:
+                            flexible_match = False
+                            break
+                    
+                    if not flexible_match:
+                        _logger.warning(
+                            "Token missing required scopes. Required: %s, Present: %s",
+                            required_scopes_set,
+                            token_scopes_set
+                        )
+                        return None
+                    else:
+                        _logger.debug("Flexible scope match found")
             
             # Extract expiration
             exp = decoded.get("exp")

@@ -50,6 +50,7 @@ This guide walks you through deploying the Redis MCP Server to Azure Container A
 RESOURCE_GROUP="rg-redis-mcp"
 LOCATION="eastus"
 ACR_NAME="your-unique-acr-name"
+IMAGE_NAME="redis-mcp-server"
 
 # Create resource group
 az group create --name $RESOURCE_GROUP --location $LOCATION
@@ -62,13 +63,16 @@ az acr create --resource-group $RESOURCE_GROUP --name $ACR_NAME --sku Basic --ad
 
 ```bash
 # Build and push to ACR
-az acr build --registry $ACR_NAME --image redis-mcp-server:latest .
+# Build the image name to avoid zsh colon interpretation issues
+IMAGE_WITH_TAG="${IMAGE_NAME}:latest"
+az acr build --registry $ACR_NAME --image "$IMAGE_WITH_TAG" .
 
 # Or build locally and push
-docker build -t redis-mcp-server .
+docker build -t $IMAGE_NAME --platform linux/amd64 .
 az acr login --name $ACR_NAME
-docker tag redis-mcp-server $ACR_NAME.azurecr.io/redis-mcp-server:latest
-docker push $ACR_NAME.azurecr.io/redis-mcp-server:latest
+FULL_IMAGE_PATH="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:latest"
+docker tag $IMAGE_NAME "$FULL_IMAGE_PATH"
+docker push "$FULL_IMAGE_PATH"
 ```
 
 #### Step 3: Create Container Apps Environment
@@ -82,23 +86,62 @@ az containerapp env create \
   --location $LOCATION
 ```
 
-#### Step 4: Deploy Container App
+#### Step 4: Create User-Assigned Managed Identity
+
+```bash
+CONTAINER_APP_NAME="redis-mcp-server"
+IDENTITY_NAME="identity-redis-mcp"
+
+# Create the managed identity
+az identity create \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION
+
+# Get identity details
+IDENTITY_ID=$(az identity show \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query id \
+  --output tsv)
+
+IDENTITY_CLIENT_ID=$(az identity show \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query clientId \
+  --output tsv)
+
+IDENTITY_PRINCIPAL_ID=$(az identity show \
+  --name $IDENTITY_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query principalId \
+  --output tsv)
+
+echo "Identity Client ID: $IDENTITY_CLIENT_ID"
+echo "Identity Principal ID: $IDENTITY_PRINCIPAL_ID"
+```
+
+#### Step 5: Deploy Container App with Managed Identity
 
 ```bash
 # Get ACR credentials
 ACR_SERVER=$(az acr show --name $ACR_NAME --resource-group $RESOURCE_GROUP --query loginServer --output tsv)
 ACR_USERNAME=$(az acr credential show --name $ACR_NAME --query username --output tsv)
-ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query passwords[0].value --output tsv)
+ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query 'passwords[0].value' --output tsv)
 
-# Create container app
+# Build the full image path to avoid zsh colon interpretation issues
+FULL_IMAGE_PATH="${ACR_SERVER}/${IMAGE_NAME}:latest"
+
+# Create container app with user-assigned managed identity
 az containerapp create \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --environment $CONTAINER_APP_ENV \
-  --image $ACR_SERVER/redis-mcp-server:latest \
+  --image "$FULL_IMAGE_PATH" \
   --registry-server $ACR_SERVER \
   --registry-username $ACR_USERNAME \
   --registry-password $ACR_PASSWORD \
+  --user-assigned $IDENTITY_ID \
   --target-port 8000 \
   --ingress external \
   --min-replicas 1 \
@@ -106,12 +149,32 @@ az containerapp create \
   --cpu 0.25 \
   --memory 0.5Gi \
   --env-vars \
-    REDIS_HOST=your-redis-host \
-    REDIS_PORT=6380 \
-    REDIS_PWD=your-redis-password \
+    REDIS_HOST=$REDIS_HOST \
+    REDIS_PORT=10000 \
     REDIS_SSL=true \
+    REDIS_ENTRAID_AUTH_METHOD=managed_identity \
+    REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID=$IDENTITY_CLIENT_ID \
     MCP_REDIS_LOG_LEVEL=INFO
 ```
+
+#### Step 6: Grant Redis Access to Managed Identity
+
+```bash
+# For Azure Cache for Redis Enterprise with Entra ID support
+REDIS_NAME="your-redis-cache-name"
+
+az redis access-policy-assignment create \
+  --resource-group $RESOURCE_GROUP \
+  --redis-cache-name $REDIS_NAME \
+  --access-policy-assignment-name "mcp-server-access" \
+  --access-policy-name "Data Contributor" \
+  --object-id $IDENTITY_PRINCIPAL_ID \
+  --object-id-alias "ServicePrincipal"
+
+echo "Deployment complete! Your container app is now using managed identity for Redis authentication."
+```
+
+> **Note**: If you're using Azure Cache for Redis Basic/Standard (non-Enterprise) that doesn't support Entra ID authentication, you'll need to use password-based authentication instead. Add `REDIS_PWD=your-redis-password` to the environment variables and remove the `REDIS_ENTRAID_*` variables.
 
 ## Setting up Azure Cache for Redis
 
@@ -179,21 +242,25 @@ az ad app create \
   --sign-in-audience AzureADMyOrg
 
 # Get the app ID
-APP_ID=$(az ad app list --display-name "Redis MCP Server" --query [0].appId -o tsv)
+APP_ID=$(az ad app list --display-name "Redis MCP Server" --query '[0].appId' -o tsv)
 
 # Expose an API and add scopes
 az ad app update --id $APP_ID \
   --identifier-uris "api://$APP_ID"
 
 # Add application roles (optional)
-cat > roles.json << 'EOF'
+# Generate UUIDs for the roles
+READ_ROLE_ID=$(uuidgen)
+WRITE_ROLE_ID=$(uuidgen)
+
+cat > roles.json << EOF
 {
   "appRoles": [
     {
       "allowedMemberTypes": ["User", "Application"],
       "description": "Read access to MCP tools",
       "displayName": "MCP.Read",
-      "id": "$(uuidgen)",
+      "id": "$READ_ROLE_ID",
       "isEnabled": true,
       "value": "MCP.Read"
     },
@@ -201,7 +268,7 @@ cat > roles.json << 'EOF'
       "allowedMemberTypes": ["User", "Application"],
       "description": "Full access to MCP tools",
       "displayName": "MCP.Write",
-      "id": "$(uuidgen)",
+      "id": "$WRITE_ROLE_ID",
       "isEnabled": true,
       "value": "MCP.Write"
     }
@@ -220,7 +287,7 @@ TENANT_ID=$(az account show --query tenantId -o tsv)
 
 # Deploy container app with OAuth
 az containerapp update \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --set-env-vars \
     MCP_OAUTH_ENABLED=true \
@@ -231,49 +298,64 @@ az containerapp update \
 
 **3. Create a Test Client and Get Token:**
 
+We provide two ready-to-use scripts for testing authentication:
+
+#### Option A: Quick Testing with Azure CLI (Recommended)
+
+Use your existing Azure CLI login to quickly test the MCP server:
+
 ```bash
-# Create a test client application
-TEST_CLIENT_ID=$(az ad app create \
-  --display-name "MCP Test Client" \
-  --query appId -o tsv)
-
-# Create a client secret
-TEST_CLIENT_SECRET=$(az ad app credential reset \
-  --id $TEST_CLIENT_ID \
-  --query password -o tsv)
-
-# Add API permission to the test client
-API_PERMISSION_ID=$(az ad app show --id $APP_ID --query "api.oauth2PermissionScopes[0].id" -o tsv)
-az ad app permission add \
-  --id $TEST_CLIENT_ID \
-  --api $APP_ID \
-  --api-permissions $API_PERMISSION_ID=Scope
-
-# Grant admin consent
-az ad app permission admin-consent --id $TEST_CLIENT_ID
-
-# Get an access token
-TOKEN=$(curl -s -X POST \
-  "https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token" \
-  -d "client_id=$TEST_CLIENT_ID" \
-  -d "client_secret=$TEST_CLIENT_SECRET" \
-  -d "scope=api://$APP_ID/.default" \
-  -d "grant_type=client_credentials" \
-  | jq -r .access_token)
-
-# Call MCP endpoint with token
-curl -X POST https://your-app.azurecontainerapps.io/message \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/list",
-    "params": {}
-  }'
+# Run the simple authentication test
+./test-auth.sh
 ```
 
-**Note:** The error `AADSTS650057: Invalid resource` means the Azure CLI doesn't have permission to request tokens for your custom API. The solution above creates a dedicated test client application that has the proper permissions.
+This script will:
+- ✅ Use your Azure CLI context (no app registration needed)
+- ✅ Get an access token for the MCP server
+- ✅ Test the MCP endpoints and show available tools
+- ✅ Provide clear success/error messages
+
+#### Option B: App-to-App Authentication Setup
+
+For true app-to-app authentication using federated credentials (no secrets or certificates):
+
+```bash
+# Run the app-to-app setup script  
+./create-app-to-app-client.sh
+```
+
+This script will:
+- ✅ Create a dedicated test client app registration
+- ✅ Assign proper app roles (MCP.Read, MCP.Write)
+- ✅ Set up federated credentials for GitHub Actions or Azure services
+- ✅ Generate sample GitHub Actions workflow for CI/CD testing
+- ✅ Demonstrate true client app identity (not user identity)
+
+#### Manual Testing
+
+If you prefer manual testing:
+
+```bash
+# Get token using Azure CLI context
+TOKEN=$(az account get-access-token --resource "api://68dd3060-50d2-4ee0-bb8e-0aa54fff6b1e" --query accessToken -o tsv)
+
+# Test MCP server
+curl -X POST "https://redis-mcp-oauth.blacktree-376d2ec0.westus2.azurecontainerapps.io/message" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}'
+```
+
+**Expected Results:**
+- ✅ HTTP 200 response with list of available Redis tools
+- ✅ Token contains app roles (`MCP.Read`, `MCP.Write`) or appropriate scopes
+- ✅ MCP server returns tools like `redis_get`, `redis_set`, `redis_list_keys`, etc.
+
+**Benefits of Federated Credentials:**
+- ✅ No client secrets to manage or rotate
+- ✅ More secure - uses OIDC token exchange
+- ✅ Better for CI/CD pipelines and cloud-native apps
+- ✅ Supports workload identity patterns
 
 ### Entra ID Authentication (Recommended for Azure Cache for Redis Enterprise)
 
@@ -298,13 +380,13 @@ Azure Cache for Redis Enterprise supports Microsoft Entra ID (formerly Azure AD)
 ```bash
 # Enable system-assigned managed identity
 az containerapp identity assign \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --system-assigned
 
 # Get the principal ID
 PRINCIPAL_ID=$(az containerapp identity show \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --query principalId \
   --output tsv)
@@ -320,7 +402,7 @@ az redis access-policy-assignment create \
 
 # Deploy with managed identity authentication
 az containerapp update \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --set-env-vars \
     REDIS_HOST=your-redis-host \
@@ -360,7 +442,7 @@ IDENTITY_PRINCIPAL_ID=$(az identity show \
 
 # Assign the user-assigned identity to the container app
 az containerapp identity assign \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --user-assigned $IDENTITY_ID
 
@@ -375,7 +457,7 @@ az redis access-policy-assignment create \
 
 # Deploy with user-assigned managed identity authentication
 az containerapp update \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --set-env-vars \
     REDIS_HOST=your-redis-host \
@@ -393,13 +475,13 @@ az ad sp create-for-rbac --name "redis-mcp-sp" --create-cert
 
 # Upload certificate as secret (assuming cert is in cert.pem)
 az containerapp secret set \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --secrets cert-file="$(cat cert.pem | base64)"
 
 # Deploy with service principal authentication
 az containerapp update \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --set-env-vars \
     REDIS_HOST=your-redis-host \
@@ -415,7 +497,7 @@ az containerapp update \
 
 ```bash
 az containerapp update \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --set-env-vars \
     REDIS_HOST=your-redis-host \
@@ -443,7 +525,7 @@ az containerapp update \
 
 2. **Enable Managed Identity** for the Container App:
    ```bash
-   az containerapp identity assign --name redis-mcp-server --resource-group $RESOURCE_GROUP --system-assigned
+   az containerapp identity assign --name $CONTAINER_APP_NAME --resource-group $RESOURCE_GROUP --system-assigned
    ```
 
 3. **Use Virtual Network** for private communication:
@@ -452,13 +534,102 @@ az containerapp update \
    az network vnet create --resource-group $RESOURCE_GROUP --name vnet-redis-mcp --address-prefix 10.0.0.0/16 --subnet-name subnet-containers --subnet-prefix 10.0.1.0/24
    ```
 
+## Updating Container App with Latest Image
+
+### Issue: Latest Tag Not Pulling New Image
+
+When using the `:latest` tag, Container Apps may cache the image and not pull the newest version. Here are several solutions:
+
+#### Solution 1: Force Update with Revision Restart
+
+```bash
+# First, build and push your latest image
+IMAGE_WITH_TAG="${IMAGE_NAME}:latest"
+az acr build --registry $ACR_NAME --image "$IMAGE_WITH_TAG" .
+
+# Update container app
+ACR_SERVER=$(az acr show --name $ACR_NAME --resource-group $RESOURCE_GROUP --query loginServer --output tsv)
+FULL_IMAGE_PATH="${ACR_SERVER}/${IMAGE_NAME}:latest"
+
+az containerapp update \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --image "$FULL_IMAGE_PATH"
+
+# Force restart to pull latest image
+az containerapp revision restart \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP
+```
+
+#### Solution 2: Use Unique Tags
+
+```bash
+# Use timestamp-based tags to force new image pulls
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+IMAGE_WITH_TAG="${IMAGE_NAME}:${TIMESTAMP}"
+
+# Build with unique tag
+az acr build --registry $ACR_NAME --image "$IMAGE_WITH_TAG" .
+
+# Update with specific tag
+ACR_SERVER=$(az acr show --name $ACR_NAME --resource-group $RESOURCE_GROUP --query loginServer --output tsv)
+FULL_IMAGE_PATH="${ACR_SERVER}/${IMAGE_NAME}:${TIMESTAMP}"
+
+az containerapp update \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --image "$FULL_IMAGE_PATH"
+```
+
+### Verify Image Update
+
+After updating, verify that the new image is being used:
+
+```bash
+# Check current image
+az containerapp show \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query "properties.template.containers[0].image" \
+  --output tsv
+
+# List recent revisions to see deployment history
+az containerapp revision list \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query "[].{Name:name,Active:properties.active,CreatedTime:properties.createdTime,Image:properties.template.containers[0].image}" \
+  --output table
+
+# Check if new revision is running
+az containerapp revision show \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --revision-name "$(az containerapp revision list --name $CONTAINER_APP_NAME --resource-group $RESOURCE_GROUP --query '[0].name' -o tsv)" \
+  --query "properties.runningState" \
+  --output tsv
+```
+
+### Why This Happens
+
+1. **Image Caching**: Container platforms cache images to improve performance
+2. **Latest Tag Ambiguity**: The `:latest` tag is just a pointer, not a version
+3. **No Change Detection**: If the tag hasn't changed, the platform assumes no update is needed
+
+### Best Practices
+
+- **Use unique tags** for production deployments (timestamps, git SHA, semantic versions)
+- **Reserve `:latest`** for development/testing only
+- **Implement proper CI/CD** with versioned releases
+- **Monitor deployments** to ensure updates are successful
+
 ## Monitoring and Troubleshooting
 
 ### View Logs
 
 ```bash
 # Container Apps logs
-az containerapp logs show --name redis-mcp-server --resource-group $RESOURCE_GROUP --follow
+az containerapp logs show --name $CONTAINER_APP_NAME --resource-group $RESOURCE_GROUP --follow
 
 # Or use Azure Portal > Container Apps > Monitoring > Log stream
 ```
@@ -469,7 +640,7 @@ The application includes a health check endpoint. Monitor it in Azure:
 
 ```bash
 # Check app status
-az containerapp show --name redis-mcp-server --resource-group $RESOURCE_GROUP --query properties.runningStatus
+az containerapp show --name $CONTAINER_APP_NAME --resource-group $RESOURCE_GROUP --query properties.runningStatus
 ```
 
 ### Common Issues
@@ -496,7 +667,7 @@ az containerapp show --name redis-mcp-server --resource-group $RESOURCE_GROUP --
 ```bash
 # Update scaling rules
 az containerapp update \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --min-replicas 2 \
   --max-replicas 10 \
@@ -510,7 +681,7 @@ az containerapp update \
 ```bash
 # Increase resources
 az containerapp update \
-  --name redis-mcp-server \
+  --name $CONTAINER_APP_NAME \
   --resource-group $RESOURCE_GROUP \
   --cpu 0.5 \
   --memory 1Gi
@@ -555,14 +726,14 @@ jobs:
     
     - name: Build and push
       run: |
-        az acr build --registry ${{ secrets.ACR_NAME }} --image redis-mcp-server:${{ github.sha }} .
+        az acr build --registry ${{ secrets.ACR_NAME }} --image "${{ secrets.IMAGE_NAME }}:${{ github.sha }}" .
     
     - name: Deploy to Container Apps
       run: |
         az containerapp update \
-          --name redis-mcp-server \
+          --name ${{ secrets.CONTAINER_APP_NAME }} \
           --resource-group ${{ secrets.RESOURCE_GROUP }} \
-          --image ${{ secrets.ACR_NAME }}.azurecr.io/redis-mcp-server:${{ github.sha }}
+          --image "${{ secrets.ACR_NAME }}.azurecr.io/${{ secrets.IMAGE_NAME }}:${{ github.sha }}"
 ```
 
 ## Additional Resources

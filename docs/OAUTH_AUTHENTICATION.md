@@ -45,42 +45,94 @@ python -m src.main
 
 ### 4. Get an Access Token
 
-**Option A: Using Azure CLI (Requires API Permission)**
+**Option A: Using Azure CLI (Add Custom Scopes)**
 
-This option is complex and often encounters Azure CLI limitations. **We strongly recommend Option C instead.**
+To get tokens with custom scopes like `MCP.Read,MCP.Write` in the `scp` claim:
 
 ```bash
-# Note: This approach has known issues with Azure CLI's JSON parsing
-# If you encounter errors, use Option C (Test Client) which is more reliable
-
-# Step 1: Create OAuth2 scope first
-SCOPE_ID=$(uuidgen)
+# Step 1: Add OAuth2 permission scopes to your app registration
 OBJECT_ID=$(az ad app show --id $APP_ID --query id -o tsv)
 
+# Generate UUIDs for the scopes
+READ_SCOPE_ID=$(uuidgen)
+WRITE_SCOPE_ID=$(uuidgen)
+
+# Add the OAuth2 permission scopes
 az rest --method PATCH \
   --uri "https://graph.microsoft.com/v1.0/applications/$OBJECT_ID" \
   --headers "Content-Type=application/json" \
-  --body "{\"api\":{\"oauth2PermissionScopes\":[{\"adminConsentDescription\":\"Access MCP Server\",\"adminConsentDisplayName\":\"Access MCP Server\",\"id\":\"$SCOPE_ID\",\"isEnabled\":true,\"type\":\"User\",\"userConsentDescription\":\"Access MCP Server\",\"userConsentDisplayName\":\"Access MCP Server\",\"value\":\"user_impersonation\"}]}}"
+  --body "{
+    \"api\": {
+      \"oauth2PermissionScopes\": [
+        {
+          \"adminConsentDescription\": \"Read access to MCP tools\",
+          \"adminConsentDisplayName\": \"MCP.Read\",
+          \"id\": \"$READ_SCOPE_ID\",
+          \"isEnabled\": true,
+          \"type\": \"User\",
+          \"userConsentDescription\": \"Read access to MCP tools\",
+          \"userConsentDisplayName\": \"MCP.Read\",
+          \"value\": \"MCP.Read\"
+        },
+        {
+          \"adminConsentDescription\": \"Write access to MCP tools\",
+          \"adminConsentDisplayName\": \"MCP.Write\",
+          \"id\": \"$WRITE_SCOPE_ID\",
+          \"isEnabled\": true,
+          \"type\": \"User\",
+          \"userConsentDescription\": \"Write access to MCP tools\",
+          \"userConsentDisplayName\": \"MCP.Write\",
+          \"value\": \"MCP.Write\"
+        }
+      ]
+    }
+  }"
 
-# Wait for scope creation
-sleep 5
-
-# Step 2: Pre-authorize Azure CLI
+# Step 2: Pre-authorize Azure CLI to access these scopes
 AZURE_CLI_APP_ID="04b07795-8ddb-461a-bbee-02f9e1bf7b46"
 
 az rest --method PATCH \
   --uri "https://graph.microsoft.com/v1.0/applications/$OBJECT_ID" \
   --headers "Content-Type=application/json" \
-  --body "{\"api\":{\"preAuthorizedApplications\":[{\"appId\":\"$AZURE_CLI_APP_ID\",\"delegatedPermissionIds\":[\"$SCOPE_ID\"]}]}}"
+  --body "{
+    \"api\": {
+      \"preAuthorizedApplications\": [
+        {
+          \"appId\": \"$AZURE_CLI_APP_ID\",
+          \"delegatedPermissionIds\": [\"$READ_SCOPE_ID\", \"$WRITE_SCOPE_ID\"]
+        }
+      ]
+    }
+  }"
 
 # Wait for propagation
-sleep 10
+sleep 30
 
-# Step 3: Get token
+# Step 3: Get token with custom scopes
 TOKEN=$(az account get-access-token --resource api://$APP_ID --query accessToken -o tsv)
+
+# Verify the token contains the expected scopes
+echo "Token scopes:"
+# Handle base64 padding issues
+TOKEN_PAYLOAD=$(echo $TOKEN | cut -d'.' -f2)
+# Add padding if needed
+while [ $((${#TOKEN_PAYLOAD} % 4)) -ne 0 ]; do
+  TOKEN_PAYLOAD="${TOKEN_PAYLOAD}="
+done
+echo $TOKEN_PAYLOAD | base64 -d 2>/dev/null | jq -r .scp
+
+# Alternative: Use Python to decode (more reliable)
+# python3 -c "
+# import json, base64, sys
+# payload = sys.argv[1]
+# payload += '=' * (4 - len(payload) % 4)
+# decoded = json.loads(base64.b64decode(payload))
+# print('Scopes:', decoded.get('scp', 'No scopes found'))
+# print('Expires:', decoded.get('exp'))
+# " $(echo $TOKEN | cut -d'.' -f2)
 ```
 
-**⚠️ Warning:** This is the most complex option with the most points of failure. Use Option C for reliable testing.
+**Note:** This creates delegated permissions (appears in `scp` claim) rather than application roles.
 
 **Option B: Using Device Code Flow (Easier for Testing)**
 
@@ -184,17 +236,64 @@ The verifier checks both claims and validates against `MCP_OAUTH_REQUIRED_SCOPES
 
 ### Custom Scopes/Roles
 
-Add application roles in Entra ID:
+**Option 1: OAuth2 Permission Scopes (Delegated Permissions - appears in `scp` claim)**
+
+For user-context tokens (Azure CLI, interactive login):
 
 ```bash
-cat > roles.json << 'EOF'
+# Add OAuth2 permission scopes
+OBJECT_ID=$(az ad app show --id $APP_ID --query id -o tsv)
+READ_SCOPE_ID=$(uuidgen)
+WRITE_SCOPE_ID=$(uuidgen)
+
+az rest --method PATCH \
+  --uri "https://graph.microsoft.com/v1.0/applications/$OBJECT_ID" \
+  --headers "Content-Type=application/json" \
+  --body "{
+    \"api\": {
+      \"oauth2PermissionScopes\": [
+        {
+          \"adminConsentDescription\": \"Read access to MCP tools\",
+          \"adminConsentDisplayName\": \"MCP.Read\",
+          \"id\": \"$READ_SCOPE_ID\",
+          \"isEnabled\": true,
+          \"type\": \"User\",
+          \"userConsentDescription\": \"Read access to MCP tools\",
+          \"userConsentDisplayName\": \"MCP.Read\",
+          \"value\": \"MCP.Read\"
+        },
+        {
+          \"adminConsentDescription\": \"Write access to MCP tools\",
+          \"adminConsentDisplayName\": \"MCP.Write\",
+          \"id\": \"$WRITE_SCOPE_ID\",
+          \"isEnabled\": true,
+          \"type\": \"User\",
+          \"userConsentDescription\": \"Write access to MCP tools\",
+          \"userConsentDisplayName\": \"MCP.Write\",
+          \"value\": \"MCP.Write\"
+        }
+      ]
+    }
+  }"
+```
+
+**Option 2: Application Roles (App Permissions - appears in `roles` claim)**
+
+For app-to-app authentication:
+
+```bash
+# Generate UUIDs for the roles
+READ_ROLE_ID=$(uuidgen)
+WRITE_ROLE_ID=$(uuidgen)
+
+cat > roles.json << EOF
 {
   "appRoles": [
     {
       "allowedMemberTypes": ["User", "Application"],
       "description": "Read access to MCP tools",
       "displayName": "MCP.Read",
-      "id": "unique-guid-1",
+      "id": "$READ_ROLE_ID",
       "isEnabled": true,
       "value": "MCP.Read"
     },
@@ -202,7 +301,7 @@ cat > roles.json << 'EOF'
       "allowedMemberTypes": ["User", "Application"],
       "description": "Full access to MCP tools",
       "displayName": "MCP.Write",
-      "id": "unique-guid-2",
+      "id": "$WRITE_ROLE_ID",
       "isEnabled": true,
       "value": "MCP.Write"
     }
@@ -218,6 +317,10 @@ Then require them:
 export MCP_OAUTH_REQUIRED_SCOPES="MCP.Read,MCP.Write"
 ```
 
+**Key Differences:**
+- **OAuth2 Scopes**: User-delegated permissions, appear in `scp` claim
+- **App Roles**: Application permissions, appear in `roles` claim
+
 ### Troubleshooting
 
 **Token validation fails:**
@@ -227,9 +330,11 @@ export MCP_OAUTH_REQUIRED_SCOPES="MCP.Read,MCP.Write"
 - Check server logs for detailed error messages
 
 **Scope validation fails:**
-- Verify the token contains the required scopes/roles
-- Check that app registration has the roles defined
+- Verify the token contains the required scopes/roles in `scp` or `roles` claims
+- For `scp` claim: Check OAuth2 permission scopes are defined and granted
+- For `roles` claim: Check app roles are defined and assigned
 - Ensure the client has been granted the required permissions
+- Use `echo $TOKEN | cut -d'.' -f2 | base64 -d | jq` to inspect token claims
 
 **JWKS errors:**
 - The server caches public keys from Microsoft
