@@ -63,7 +63,7 @@ The deployment script supports three authentication methods:
 2. **Configure infrastructure** when prompted:
    - Resource group name
    - Azure region
-   - Redis Enterprise SKU (B0, B1, B3, B5, etc.)
+   - Azure Managed Redis SKU (B0, B1, B3, B5, etc.)
 
 3. **Configure authentication** when prompted:
    ```
