@@ -81,7 +81,7 @@ param tags object = {
 
 // Generate unique names
 var uniqueSuffix = substring(uniqueString(resourceGroup().id), 0, 6)
-var redisName = '${baseName}-redis-${environment}-${uniqueSuffix}'
+var redisName = '${baseName}-amr-${environment}-${uniqueSuffix}'
 var acrName = replace('${baseName}acr${environment}${uniqueSuffix}', '-', '')
 var identityName = '${baseName}-identity-${environment}'
 var containerAppEnvName = '${baseName}-env-${environment}'

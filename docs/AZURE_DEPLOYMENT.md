@@ -1,832 +1,695 @@
 # Deploying Redis MCP Server to Azure Container Apps
 
-This guide walks you through deploying the Redis MCP Server to Azure Container Apps, a fully managed serverless container platform.
+This guide walks you through deploying the Redis MCP Server to Azure Container Apps using the **automated deployment script** with integrated **authentication configuration**.
 
-## Prerequisites
+## 🚀 Quick Start (Recommended)
 
-1. **Azure CLI** installed and logged in:
+The easiest way to deploy is using our **interactive deployment script**:
+
+```bash
+./infrastructure/deploy-redis-stack.sh
+```
+
+This script will:
+1. **Configure infrastructure** (resource group, location, Redis SKU)  
+2. **Configure authentication** (NO-AUTH, API-KEY, or OAUTH)
+3. **Deploy complete stack** (Redis Enterprise, Container Apps, networking)
+4. **Build and deploy** your MCP server automatically
+
+## 📋 Prerequisites
+
+Before starting, ensure you have:
+
+1. **Azure CLI** installed and authenticated:
    ```bash
    az login
    az account set --subscription "your-subscription-id"
    ```
 
-2. **Docker** installed (for local testing)
+2. **Docker** installed (for building container images)
 
-3. **Azure Cache for Redis** instance (recommended) or external Redis
+3. **Project files** - Run the script from the **project root directory**
 
-## Quick Deployment
+## 🔐 Authentication Options
 
-### Option 1: Automated Deployment (Recommended)
+The deployment script supports three authentication methods:
 
-1. **Configure your settings** in the deployment script:
+### 1. **NO-AUTH** (Development/Testing)
+- **Use case**: Development, testing, trusted networks
+- **Configuration**: No additional setup required
+- **Client usage**: Direct API calls without authentication
+
+### 2. **API-KEY** (Production Ready)  
+- **Use case**: Production deployments with API key management
+- **Configuration**: Provide comma-separated API keys during deployment
+- **Client usage**: Include `X-API-Key` header in requests
+- **Generate keys**: `openssl rand -base64 32`
+
+### 3. **OAUTH** (Enterprise)
+- **Use case**: Enterprise environments with Azure Entra ID
+- **Configuration**: Provide Azure tenant ID, client ID, and scopes
+- **Client usage**: Include `Authorization: Bearer <jwt-token>` header
+- **Setup**: Requires Azure App Registration
+
+## 🛠️ Deployment Process
+
+### Interactive Deployment
+
+1. **Run the deployment script**:
    ```bash
-   # For Linux/macOS
-   chmod +x deploy-to-azure.sh
-   
-   # For Windows
-   # Use deploy-to-azure.ps1
+   ./infrastructure/deploy-redis-stack.sh
    ```
 
-2. **Update variables** in the script:
-   - Change `ACR_NAME` to something globally unique
-   - Update Redis connection details
-   - Modify resource group name and location if needed
+2. **Configure infrastructure** when prompted:
+   - Resource group name
+   - Azure region
+   - Redis Enterprise SKU (B0, B1, B3, B5, etc.)
 
-3. **Run the deployment**:
-   ```bash
-   # Linux/macOS
-   ./deploy-to-azure.sh
+3. **Configure authentication** when prompted:
+   ```
+   Available authentication methods:
+     1) NO-AUTH  - No authentication required
+     2) API-KEY  - API key authentication via X-API-Key header  
+     3) OAUTH    - OAuth JWT token authentication
    
-   # Windows PowerShell
-   .\deploy-to-azure.ps1
+   Select authentication method (1-3): 2
+   Enter API keys: key1,key2,key3
    ```
 
-### Option 2: Manual Step-by-Step Deployment
+4. **Confirm and deploy** - The script handles everything automatically!
 
-#### Step 1: Create Azure Resources
+### Non-Interactive Deployment
 
-```bash
-# Set variables
-RESOURCE_GROUP="rg-redis-mcp"
-LOCATION="eastus"
-ACR_NAME="your-unique-acr-name"
-IMAGE_NAME="redis-mcp-server"
-
-# Create resource group
-az group create --name $RESOURCE_GROUP --location $LOCATION
-
-# Create Azure Container Registry
-az acr create --resource-group $RESOURCE_GROUP --name $ACR_NAME --sku Basic --admin-enabled true
-```
-
-#### Step 2: Build and Push Container Image
+For CI/CD pipelines, you can provide parameters directly:
 
 ```bash
-# Build and push to ACR
-<<<<<<< HEAD
-az acr build --registry $ACR_NAME --image $IMAGE_NAME:latest --platform linux/amd64 .
-
-# Or build locally and push
-docker build -t $IMAGE_NAME .
-az acr login --name $ACR_NAME
-docker tag $IMAGE_NAME $ACR_NAME.azurecr.io/$IMAGE_NAME:latest
-docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:latest
-=======
-# Build the image name to avoid zsh colon interpretation issues
-IMAGE_WITH_TAG="${IMAGE_NAME}:latest"
-az acr build --registry $ACR_NAME --image "$IMAGE_WITH_TAG" .
-
-# Or build locally and push
-docker build -t $IMAGE_NAME --platform linux/amd64 .
-az acr login --name $ACR_NAME
-FULL_IMAGE_PATH="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:latest"
-docker tag $IMAGE_NAME "$FULL_IMAGE_PATH"
-docker push "$FULL_IMAGE_PATH"
->>>>>>> wjason/server-auth
+./infrastructure/deploy-redis-stack.sh \
+  --resource-group "rg-redis-mcp-prod" \
+  --location "westus2" \
+  --redis-sku "Balanced_B3"
 ```
 
-#### Step 3: Create Container Apps Environment
+*Note: Authentication must still be configured interactively for security*
 
-```bash
-CONTAINER_APP_ENV="env-redis-mcp"
+## 🏗️ What Gets Deployed
 
-az containerapp env create \
-  --name $CONTAINER_APP_ENV \
-  --resource-group $RESOURCE_GROUP \
-  --location $LOCATION
-```
+The automated deployment creates:
 
-#### Step 4: Create User-Assigned Managed Identity
+### Azure Resources:
+- **Azure Managed Redis Enterprise** - High-performance Redis with modules
+- **Container Apps Environment** - Serverless container hosting  
+- **Container Registry** - Private container image storage
+- **User-Assigned Managed Identity** - Secure Redis access
+- **Log Analytics Workspace** - Centralized logging
+- **Networking & Security** - Proper network isolation
 
-```bash
-CONTAINER_APP_NAME="redis-mcp-server"
-IDENTITY_NAME="identity-redis-mcp"
+### MCP Server Configuration:
+- **Redis Connection** - Automatic connection via managed identity
+- **Authentication Middleware** - Based on your selected method
+- **Health Monitoring** - Built-in health checks  
+- **Auto-scaling** - Scales based on HTTP traffic
+- **Logging** - Structured logs to Azure Monitor
 
-# Create the managed identity
-az identity create \
-  --name $IDENTITY_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --location $LOCATION
+## 🔧 Manual Configuration (Advanced)
 
-# Get identity details
-IDENTITY_ID=$(az identity show \
-  --name $IDENTITY_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query id \
-  --output tsv)
-
-IDENTITY_CLIENT_ID=$(az identity show \
-  --name $IDENTITY_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query clientId \
-  --output tsv)
-
-IDENTITY_PRINCIPAL_ID=$(az identity show \
-  --name $IDENTITY_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query principalId \
-  --output tsv)
-
-echo "Identity Client ID: $IDENTITY_CLIENT_ID"
-echo "Identity Principal ID: $IDENTITY_PRINCIPAL_ID"
-```
-
-#### Step 5: Deploy Container App with Managed Identity
-
-```bash
-# Get ACR credentials
-ACR_SERVER=$(az acr show --name $ACR_NAME --resource-group $RESOURCE_GROUP --query loginServer --output tsv)
-ACR_USERNAME=$(az acr credential show --name $ACR_NAME --query username --output tsv)
-ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query 'passwords[0].value' --output tsv)
-
-<<<<<<< HEAD
-=======
-# Build the full image path to avoid zsh colon interpretation issues
-FULL_IMAGE_PATH="${ACR_SERVER}/${IMAGE_NAME}:latest"
-
->>>>>>> wjason/server-auth
-# Create container app with user-assigned managed identity
-az containerapp create \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --environment $CONTAINER_APP_ENV \
-<<<<<<< HEAD
-  --image $ACR_SERVER/$IMAGE_NAME:latest \
-=======
-  --image "$FULL_IMAGE_PATH" \
->>>>>>> wjason/server-auth
-  --registry-server $ACR_SERVER \
-  --registry-username $ACR_USERNAME \
-  --registry-password $ACR_PASSWORD \
-  --user-assigned $IDENTITY_ID \
-  --target-port 8000 \
-  --ingress external \
-  --min-replicas 1 \
-  --max-replicas 5 \
-  --cpu 0.25 \
-  --memory 0.5Gi \
-  --env-vars \
-    REDIS_HOST=$REDIS_HOST \
-    REDIS_PORT=10000 \
-    REDIS_SSL=true \
-    REDIS_ENTRAID_AUTH_METHOD=managed_identity \
-    REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID=$IDENTITY_CLIENT_ID \
-    MCP_REDIS_LOG_LEVEL=INFO
-```
-
-#### Step 6: Grant Redis Access to Managed Identity
-
-```bash
-# For Azure Cache for Redis Enterprise with Entra ID support
-REDIS_NAME="your-redis-cache-name"
-
-az redis access-policy-assignment create \
-  --resource-group $RESOURCE_GROUP \
-  --redis-cache-name $REDIS_NAME \
-  --access-policy-assignment-name "mcp-server-access" \
-  --access-policy-name "Data Contributor" \
-  --object-id $IDENTITY_PRINCIPAL_ID \
-  --object-id-alias "ServicePrincipal"
-
-echo "Deployment complete! Your container app is now using managed identity for Redis authentication."
-```
-
-> **Note**: If you're using Azure Cache for Redis Basic/Standard (non-Enterprise) that doesn't support Entra ID authentication, you'll need to use password-based authentication instead. Add `REDIS_PWD=your-redis-password` to the environment variables and remove the `REDIS_ENTRAID_*` variables.
-
-## Setting up Azure Cache for Redis
-
-### Create Redis Cache
-
-```bash
-REDIS_NAME="redis-mcp-cache"
-
-az redis create \
-  --location $LOCATION \
-  --name $REDIS_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --sku Basic \
-  --vm-size c0
-```
-
-### Get Redis Connection Details
-
-```bash
-# Get hostname
-REDIS_HOST=$(az redis show --name $REDIS_NAME --resource-group $RESOURCE_GROUP --query hostName --output tsv)
-
-# Get access keys
-REDIS_KEY=$(az redis list-keys --name $REDIS_NAME --resource-group $RESOURCE_GROUP --query primaryKey --output tsv)
-
-echo "Redis Host: $REDIS_HOST"
-echo "Redis Port: 6380 (SSL)"
-echo "Redis Key: $REDIS_KEY"
-```
-
-## Configuration Options
+If you prefer manual deployment or need to customize beyond the script options:
 
 ### Environment Variables
 
+The deployment configures these environment variables based on your authentication choice:
+
+```bash
+# Authentication Configuration
+MCP_AUTH_METHOD=API-KEY              # or NO-AUTH, OAUTH
+MCP_API_KEYS=key1,key2,key3         # Required for API-KEY
+MCP_OAUTH_TENANT_ID=your-tenant     # Required for OAUTH  
+MCP_OAUTH_CLIENT_ID=your-client     # Required for OAUTH
+MCP_OAUTH_REQUIRED_SCOPES=scope1    # Optional for OAUTH
+
+# Redis Configuration (Auto-configured)
+REDIS_HOST=your-redis.redis.cache.windows.net
+REDIS_PORT=10000
+REDIS_SSL=true
+REDIS_ENTRAID_AUTH_METHOD=managed_identity
+REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID=your-identity-id
+```
+
+### Custom Bicep Deployment
+
+```bash
+# Deploy with Bicep templates
+az deployment group create \
+  --resource-group $RESOURCE_GROUP \
+  --template-file infrastructure/main.bicep \
+  --parameters @infrastructure/main.parameters.json \
+  --parameters location=$LOCATION \
+  --parameters mcpAuthMethod="API-KEY" \
+  --parameters mcpApiKeys="key1,key2,key3"
+```
+
+## 📊 Testing Your Deployment
+
+After deployment completes, test your MCP server:
+
+### Health Check (No Authentication Required)
+```bash
+curl https://your-app-url.azurecontainerapps.io/health
+```
+
+### Authentication Testing
+
+#### NO-AUTH Method:
+```bash
+curl -X POST https://your-app-url.azurecontainerapps.io/message \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+```
+
+#### API-KEY Method:
+```bash
+curl -X POST https://your-app-url.azurecontainerapps.io/message \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+```
+
+#### OAUTH Method:
+```bash
+# Get token (example using Azure CLI)
+TOKEN=$(az account get-access-token --resource "api://your-client-id" --query accessToken -o tsv)
+
+curl -X POST https://your-app-url.azurecontainerapps.io/message \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}'
+```
+
+## 🔧 Configuration Reference
+
+### Authentication Environment Variables
+
+| Variable | Description | Required For | Example |
+|----------|-------------|--------------|---------|
+| `MCP_AUTH_METHOD` | Authentication method | All | `NO-AUTH`, `API-KEY`, `OAUTH` |
+| `MCP_API_KEYS` | API keys (comma-separated) | API-KEY | `key1,key2,key3` |
+| `MCP_OAUTH_TENANT_ID` | Azure tenant ID | OAUTH | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| `MCP_OAUTH_CLIENT_ID` | Azure client ID | OAUTH | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| `MCP_OAUTH_REQUIRED_SCOPES` | Required OAuth scopes | OAUTH (optional) | `scope1,scope2` |
+
+### Redis Environment Variables (Auto-configured)
+
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
-| `REDIS_HOST` | Redis hostname | `127.0.0.1` | `mycache.redis.cache.windows.net` |
-| `REDIS_PORT` | Redis port | `6379` | `6380` (SSL) |
-| `REDIS_PWD` | Redis password | `""` | Your Redis access key |
+| `REDIS_HOST` | Redis hostname | - | `your-redis.redis.cache.windows.net` |
+| `REDIS_PORT` | Redis port | `6379` | `10000` |
 | `REDIS_SSL` | Enable SSL | `false` | `true` |
-| `REDIS_DB` | Database number | `0` | `0` |
-| `MCP_REDIS_LOG_LEVEL` | Log level | `WARNING` | `INFO` |
+| `REDIS_ENTRAID_AUTH_METHOD` | Redis auth method | - | `managed_identity` |
+| `REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID` | Managed identity client ID | - | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
 
-<<<<<<< HEAD
-=======
-### MCP Server OAuth Authentication (Protect MCP Endpoints)
+## 🔍 Monitoring & Troubleshooting
 
-Protect your MCP server endpoints with Microsoft Entra ID OAuth authentication. Clients must present valid access tokens to use the MCP tools.
-
-#### Environment Variables for MCP OAuth
-
-| Variable | Description | Required | Example |
-|----------|-------------|----------|---------|
-| `MCP_OAUTH_ENABLED` | Enable OAuth authentication | Yes | `true` |
-| `MCP_OAUTH_TENANT_ID` | Entra ID tenant ID | Yes | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
-| `MCP_OAUTH_CLIENT_ID` | Application (client) ID | Yes | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
-| `MCP_OAUTH_REQUIRED_SCOPES` | Required OAuth scopes (comma-separated) | No | `api://your-app-id/.default` or `MCP.Read,MCP.Write` |
-
-#### Setup Instructions
-
-**1. Register Application in Entra ID:**
-
+### View Application Logs
 ```bash
-# Create app registration
-az ad app create \
-  --display-name "Redis MCP Server" \
-  --sign-in-audience AzureADMyOrg
-
-# Get the app ID
-APP_ID=$(az ad app list --display-name "Redis MCP Server" --query '[0].appId' -o tsv)
-
-# Expose an API and add scopes
-az ad app update --id $APP_ID \
-  --identifier-uris "api://$APP_ID"
-
-# Add application roles (optional)
-# Generate UUIDs for the roles
-READ_ROLE_ID=$(uuidgen)
-WRITE_ROLE_ID=$(uuidgen)
-
-cat > roles.json << EOF
-{
-  "appRoles": [
-    {
-      "allowedMemberTypes": ["User", "Application"],
-      "description": "Read access to MCP tools",
-      "displayName": "MCP.Read",
-      "id": "$READ_ROLE_ID",
-      "isEnabled": true,
-      "value": "MCP.Read"
-    },
-    {
-      "allowedMemberTypes": ["User", "Application"],
-      "description": "Full access to MCP tools",
-      "displayName": "MCP.Write",
-      "id": "$WRITE_ROLE_ID",
-      "isEnabled": true,
-      "value": "MCP.Write"
-    }
-  ]
-}
-EOF
-
-az ad app update --id $APP_ID --app-roles @roles.json
-```
-
-**2. Deploy with OAuth Enabled:**
-
-```bash
-# Get your tenant ID
-TENANT_ID=$(az account show --query tenantId -o tsv)
-
-# Deploy container app with OAuth
-az containerapp update \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --set-env-vars \
-    MCP_OAUTH_ENABLED=true \
-    MCP_OAUTH_TENANT_ID=$TENANT_ID \
-    MCP_OAUTH_CLIENT_ID=$APP_ID \
-    MCP_OAUTH_REQUIRED_SCOPES="MCP.Read,MCP.Write"
-```
-
-**3. Create a Test Client and Get Token:**
-
-We provide two ready-to-use scripts for testing authentication:
-
-#### Option A: Quick Testing with Azure CLI (Recommended)
-
-Use your existing Azure CLI login to quickly test the MCP server:
-
-```bash
-# Run the simple authentication test
-./test-auth.sh
-```
-
-This script will:
-- ✅ Use your Azure CLI context (no app registration needed)
-- ✅ Get an access token for the MCP server
-- ✅ Test the MCP endpoints and show available tools
-- ✅ Provide clear success/error messages
-
-#### Option B: App-to-App Authentication Setup
-
-For true app-to-app authentication using federated credentials (no secrets or certificates):
-
-```bash
-# Run the app-to-app setup script  
-./create-app-to-app-client.sh
-```
-
-This script will:
-- ✅ Create a dedicated test client app registration
-- ✅ Assign proper app roles (MCP.Read, MCP.Write)
-- ✅ Set up federated credentials for GitHub Actions or Azure services
-- ✅ Generate sample GitHub Actions workflow for CI/CD testing
-- ✅ Demonstrate true client app identity (not user identity)
-
-#### Manual Testing
-
-If you prefer manual testing:
-
-```bash
-# Get token using Azure CLI context
-TOKEN=$(az account get-access-token --resource "api://68dd3060-50d2-4ee0-bb8e-0aa54fff6b1e" --query accessToken -o tsv)
-
-# Test MCP server
-curl -X POST "https://redis-mcp-oauth.blacktree-376d2ec0.westus2.azurecontainerapps.io/message" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}'
-```
-
-**Expected Results:**
-- ✅ HTTP 200 response with list of available Redis tools
-- ✅ Token contains app roles (`MCP.Read`, `MCP.Write`) or appropriate scopes
-- ✅ MCP server returns tools like `redis_get`, `redis_set`, `redis_list_keys`, etc.
-
-**Benefits of Federated Credentials:**
-- ✅ No client secrets to manage or rotate
-- ✅ More secure - uses OIDC token exchange
-- ✅ Better for CI/CD pipelines and cloud-native apps
-- ✅ Supports workload identity patterns
-
->>>>>>> wjason/server-auth
-### Entra ID Authentication (Recommended for Azure Cache for Redis Enterprise)
-
-Azure Cache for Redis Enterprise supports Microsoft Entra ID (formerly Azure AD) authentication, providing better security without managing passwords.
-
-<<<<<<< HEAD
-#### Environment Variables for Entra ID
-=======
-#### Environment Variables for Redis Entra ID
->>>>>>> wjason/server-auth
-
-| Variable | Description | Required | Example |
-|----------|-------------|----------|---------|
-| `REDIS_ENTRAID_AUTH_METHOD` | Authentication method | Yes | `managed_identity`, `service_principal`, or `default_azure_credential` |
-| `REDIS_ENTRAID_TENANT_ID` | Tenant ID | For service_principal | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
-| `REDIS_ENTRAID_CLIENT_ID` | Application (client) ID | For service_principal | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
-| `REDIS_ENTRAID_CERT_PATH` | Path to certificate file | For service_principal | `/app/cert.pem` |
-| `REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID` | Managed identity client ID | For user-assigned MI | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
-
-#### Authentication Methods
-
-**1. Managed Identity (Recommended for Container Apps):**
-
-**Option A: System-Assigned Managed Identity**
-
-```bash
-# Enable system-assigned managed identity
-az containerapp identity assign \
-<<<<<<< HEAD
-  --name redis-mcp-server \
-=======
-  --name $CONTAINER_APP_NAME \
->>>>>>> wjason/server-auth
-  --resource-group $RESOURCE_GROUP \
-  --system-assigned
-
-# Get the principal ID
-PRINCIPAL_ID=$(az containerapp identity show \
-<<<<<<< HEAD
-  --name redis-mcp-server \
-=======
-  --name $CONTAINER_APP_NAME \
->>>>>>> wjason/server-auth
-  --resource-group $RESOURCE_GROUP \
-  --query principalId \
-  --output tsv)
-
-# Grant Redis access to the managed identity
-az redis access-policy-assignment create \
-  --resource-group $RESOURCE_GROUP \
-  --redis-cache-name $REDIS_NAME \
-  --access-policy-assignment-name "mcp-server-access" \
-  --access-policy-name "Data Contributor" \
-  --object-id $PRINCIPAL_ID \
-  --object-id-alias "ServicePrincipal"
-
-# Deploy with managed identity authentication
-az containerapp update \
-<<<<<<< HEAD
-  --name redis-mcp-server \
-=======
-  --name $CONTAINER_APP_NAME \
->>>>>>> wjason/server-auth
-  --resource-group $RESOURCE_GROUP \
-  --set-env-vars \
-    REDIS_HOST=your-redis-host \
-    REDIS_PORT=6380 \
-    REDIS_SSL=true \
-    REDIS_ENTRAID_AUTH_METHOD=managed_identity
-```
-
-**Option B: User-Assigned Managed Identity**
-
-```bash
-# Create a user-assigned managed identity
-IDENTITY_NAME="identity-redis-mcp"
-az identity create \
-  --name $IDENTITY_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --location $LOCATION
-
-# Get the identity details
-IDENTITY_ID=$(az identity show \
-  --name $IDENTITY_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query id \
-  --output tsv)
-
-IDENTITY_CLIENT_ID=$(az identity show \
-  --name $IDENTITY_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query clientId \
-  --output tsv)
-
-IDENTITY_PRINCIPAL_ID=$(az identity show \
-  --name $IDENTITY_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query principalId \
-  --output tsv)
-
-# Assign the user-assigned identity to the container app
-az containerapp identity assign \
-<<<<<<< HEAD
-  --name redis-mcp-server \
-=======
-  --name $CONTAINER_APP_NAME \
->>>>>>> wjason/server-auth
-  --resource-group $RESOURCE_GROUP \
-  --user-assigned $IDENTITY_ID
-
-# Grant Redis access to the user-assigned managed identity
-az redis access-policy-assignment create \
-  --resource-group $RESOURCE_GROUP \
-  --redis-cache-name $REDIS_NAME \
-  --access-policy-assignment-name "mcp-server-access" \
-  --access-policy-name "Data Contributor" \
-  --object-id $IDENTITY_PRINCIPAL_ID \
-  --object-id-alias "ServicePrincipal"
-
-# Deploy with user-assigned managed identity authentication
-az containerapp update \
-<<<<<<< HEAD
-  --name redis-mcp-server \
-=======
-  --name $CONTAINER_APP_NAME \
->>>>>>> wjason/server-auth
-  --resource-group $RESOURCE_GROUP \
-  --set-env-vars \
-    REDIS_HOST=your-redis-host \
-    REDIS_PORT=6380 \
-    REDIS_SSL=true \
-    REDIS_ENTRAID_AUTH_METHOD=managed_identity \
-    REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID=$IDENTITY_CLIENT_ID
-```
-
-**2. Service Principal (Certificate-based):**
-
-```bash
-# Create service principal
-az ad sp create-for-rbac --name "redis-mcp-sp" --create-cert
-
-# Upload certificate as secret (assuming cert is in cert.pem)
-az containerapp secret set \
-<<<<<<< HEAD
-  --name redis-mcp-server \
-=======
-  --name $CONTAINER_APP_NAME \
->>>>>>> wjason/server-auth
-  --resource-group $RESOURCE_GROUP \
-  --secrets cert-file="$(cat cert.pem | base64)"
-
-# Deploy with service principal authentication
-az containerapp update \
-<<<<<<< HEAD
-  --name redis-mcp-server \
-=======
-  --name $CONTAINER_APP_NAME \
->>>>>>> wjason/server-auth
-  --resource-group $RESOURCE_GROUP \
-  --set-env-vars \
-    REDIS_HOST=your-redis-host \
-    REDIS_PORT=6380 \
-    REDIS_SSL=true \
-    REDIS_ENTRAID_AUTH_METHOD=service_principal \
-    REDIS_ENTRAID_TENANT_ID=your-tenant-id \
-    REDIS_ENTRAID_CLIENT_ID=your-client-id \
-    REDIS_ENTRAID_CERT_PATH=/mnt/secrets/cert-file
-```
-
-**3. DefaultAzureCredential (Tries multiple methods):**
-
-```bash
-az containerapp update \
-<<<<<<< HEAD
-  --name redis-mcp-server \
-=======
-  --name $CONTAINER_APP_NAME \
->>>>>>> wjason/server-auth
-  --resource-group $RESOURCE_GROUP \
-  --set-env-vars \
-    REDIS_HOST=your-redis-host \
-    REDIS_PORT=6380 \
-    REDIS_SSL=true \
-    REDIS_ENTRAID_AUTH_METHOD=default_azure_credential
-```
-
-### Security Best Practices
-
-1. **Use Entra ID Authentication** (Recommended for Azure Cache for Redis Enterprise):
-   - ✅ No password management needed
-   - ✅ Automatic token rotation
-   - ✅ Better audit trail
-   - ✅ Works with Azure RBAC
-
-2. **Use Azure Key Vault** for storing Redis passwords (if not using Entra ID):
-   ```bash
-   # Create Key Vault
-   az keyvault create --name "kv-redis-mcp" --resource-group $RESOURCE_GROUP --location $LOCATION
-   
-   # Store Redis password
-   az keyvault secret set --vault-name "kv-redis-mcp" --name "redis-password" --value $REDIS_KEY
-   ```
-
-2. **Enable Managed Identity** for the Container App:
-   ```bash
-<<<<<<< HEAD
-   az containerapp identity assign --name redis-mcp-server --resource-group $RESOURCE_GROUP --system-assigned
-=======
-   az containerapp identity assign --name $CONTAINER_APP_NAME --resource-group $RESOURCE_GROUP --system-assigned
->>>>>>> wjason/server-auth
-   ```
-
-3. **Use Virtual Network** for private communication:
-   ```bash
-   # Create VNet
-   az network vnet create --resource-group $RESOURCE_GROUP --name vnet-redis-mcp --address-prefix 10.0.0.0/16 --subnet-name subnet-containers --subnet-prefix 10.0.1.0/24
-   ```
-
-<<<<<<< HEAD
-=======
-## Updating Container App with Latest Image
-
-### Issue: Latest Tag Not Pulling New Image
-
-When using the `:latest` tag, Container Apps may cache the image and not pull the newest version. Here are several solutions:
-
-#### Solution 1: Force Update with Revision Restart
-
-```bash
-# First, build and push your latest image
-IMAGE_WITH_TAG="${IMAGE_NAME}:latest"
-az acr build --registry $ACR_NAME --image "$IMAGE_WITH_TAG" .
-
-# Update container app
-ACR_SERVER=$(az acr show --name $ACR_NAME --resource-group $RESOURCE_GROUP --query loginServer --output tsv)
-FULL_IMAGE_PATH="${ACR_SERVER}/${IMAGE_NAME}:latest"
-
-az containerapp update \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --image "$FULL_IMAGE_PATH"
-
-# Force restart to pull latest image
-az containerapp revision restart \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP
-```
-
-#### Solution 2: Use Unique Tags
-
-```bash
-# Use timestamp-based tags to force new image pulls
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-IMAGE_WITH_TAG="${IMAGE_NAME}:${TIMESTAMP}"
-
-# Build with unique tag
-az acr build --registry $ACR_NAME --image "$IMAGE_WITH_TAG" .
-
-# Update with specific tag
-ACR_SERVER=$(az acr show --name $ACR_NAME --resource-group $RESOURCE_GROUP --query loginServer --output tsv)
-FULL_IMAGE_PATH="${ACR_SERVER}/${IMAGE_NAME}:${TIMESTAMP}"
-
-az containerapp update \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --image "$FULL_IMAGE_PATH"
-```
-
-### Verify Image Update
-
-After updating, verify that the new image is being used:
-
-```bash
-# Check current image
-az containerapp show \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query "properties.template.containers[0].image" \
-  --output tsv
-
-# List recent revisions to see deployment history
-az containerapp revision list \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query "[].{Name:name,Active:properties.active,CreatedTime:properties.createdTime,Image:properties.template.containers[0].image}" \
-  --output table
-
-# Check if new revision is running
-az containerapp revision show \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --revision-name "$(az containerapp revision list --name $CONTAINER_APP_NAME --resource-group $RESOURCE_GROUP --query '[0].name' -o tsv)" \
-  --query "properties.runningState" \
-  --output tsv
-```
-
-### Why This Happens
-
-1. **Image Caching**: Container platforms cache images to improve performance
-2. **Latest Tag Ambiguity**: The `:latest` tag is just a pointer, not a version
-3. **No Change Detection**: If the tag hasn't changed, the platform assumes no update is needed
-
-### Best Practices
-
-- **Use unique tags** for production deployments (timestamps, git SHA, semantic versions)
-- **Reserve `:latest`** for development/testing only
-- **Implement proper CI/CD** with versioned releases
-- **Monitor deployments** to ensure updates are successful
-
->>>>>>> wjason/server-auth
-## Monitoring and Troubleshooting
-
-### View Logs
-
-```bash
-# Container Apps logs
-<<<<<<< HEAD
-az containerapp logs show --name redis-mcp-server --resource-group $RESOURCE_GROUP --follow
-=======
+# Get deployment outputs first
+DEPLOYMENT_NAME=$(az deployment group list --resource-group $RESOURCE_GROUP --query "[?contains(name, 'redis-mcp-deployment')].name" -o tsv | head -1)
+CONTAINER_APP_NAME=$(az deployment group show --resource-group $RESOURCE_GROUP --name $DEPLOYMENT_NAME --query "properties.outputs.containerAppName.value" -o tsv)
+
+# View logs
 az containerapp logs show --name $CONTAINER_APP_NAME --resource-group $RESOURCE_GROUP --follow
->>>>>>> wjason/server-auth
-
-# Or use Azure Portal > Container Apps > Monitoring > Log stream
 ```
 
-### Health Checks
-
-The application includes a health check endpoint. Monitor it in Azure:
-
-```bash
-# Check app status
-<<<<<<< HEAD
-az containerapp show --name redis-mcp-server --resource-group $RESOURCE_GROUP --query properties.runningStatus
-=======
-az containerapp show --name $CONTAINER_APP_NAME --resource-group $RESOURCE_GROUP --query properties.runningStatus
->>>>>>> wjason/server-auth
+### Check Authentication Status
+The deployment script shows authentication configuration in the summary. Look for:
+```
+🔐 Authentication:
+  Authentication: API KEY
+  API Keys: 3 configured
+  Test with: curl -H "X-API-Key: your-api-key" https://your-app.azurecontainerapps.io/health
 ```
 
 ### Common Issues
 
-1. **Redis Connection Failed**
-   - Verify Redis host, port, and password
-   - Check if SSL is required (Azure Cache for Redis uses SSL by default)
-   - Ensure firewall rules allow Container Apps IP ranges
+1. **Authentication Errors**:
+   - Verify `MCP_AUTH_METHOD` is set correctly
+   - Check API keys are properly configured
+   - For OAuth, ensure tenant/client IDs are valid
 
-2. **Container Won't Start**
-   - Check environment variables
-   - Review container logs
-   - Verify image build was successful
+2. **Redis Connection Issues**:
+   - Verify managed identity has Redis access policies
+   - Check Redis firewall settings
+   - Ensure SSL settings match Redis configuration
 
-3. **Performance Issues**
-   - Increase CPU/memory allocation
-   - Scale up replicas
-   - Check Redis performance metrics
+3. **Container Issues**:
+   - Review container logs for startup errors
+   - Check resource limits (CPU/memory)
+   - Verify image was built and pushed correctly
 
-## Scaling and Performance
+## 🚀 Production Considerations
 
-### Auto-scaling Rules
+### Security Best Practices
 
-```bash
-# Update scaling rules
-az containerapp update \
-<<<<<<< HEAD
-  --name redis-mcp-server \
-=======
-  --name $CONTAINER_APP_NAME \
->>>>>>> wjason/server-auth
-  --resource-group $RESOURCE_GROUP \
-  --min-replicas 2 \
-  --max-replicas 10 \
-  --scale-rule-name "http-requests" \
-  --scale-rule-type "http" \
-  --scale-rule-http-concurrency 30
-```
+1. **Use API-KEY or OAUTH** for production deployments
+2. **Generate strong API keys**: `openssl rand -base64 32`
+3. **Rotate API keys regularly** via Azure Container Apps environment variables
+4. **Use Azure Key Vault** for sensitive configuration (planned feature)
+5. **Enable Container Apps ingress restrictions** if needed
 
-### Resource Allocation
+### Performance & Scaling
 
-```bash
-# Increase resources
-az containerapp update \
-<<<<<<< HEAD
-  --name redis-mcp-server \
-=======
-  --name $CONTAINER_APP_NAME \
->>>>>>> wjason/server-auth
-  --resource-group $RESOURCE_GROUP \
-  --cpu 0.5 \
-  --memory 1Gi
-```
+The deployment automatically configures:
+- **Auto-scaling**: 1-5 replicas based on HTTP traffic
+- **Resource limits**: 0.25 CPU, 0.5Gi memory (adjustable)
+- **Health checks**: Built-in health monitoring
+- **Load balancing**: Automatic across replicas
 
-## Cost Optimization
+### High Availability
 
-1. **Use appropriate pricing tier**:
-   - Basic: Development/testing
-   - Standard: Production workloads
-   - Premium: High-performance needs
+For production workloads:
+- **Multi-region deployment** (deploy to multiple regions)
+- **Redis Enterprise clustering** (automatic in Azure Managed Redis)
+- **Azure Front Door** for global load balancing
+- **Application Insights** for monitoring and alerting
 
-2. **Right-size resources**:
-   - Start with minimal CPU/memory
-   - Monitor and scale based on usage
+## 📚 Advanced Topics
 
-3. **Implement auto-shutdown** for development environments
+### Custom Authentication Middleware
 
-## CI/CD Integration
+The server supports custom authentication middleware. See the `src/auth/` directory for:
+- `APIKeyMiddleware` - API key authentication
+- `BearerAuthMiddleware` - OAuth JWT authentication
+- Custom middleware can be added following the same pattern
 
-### GitHub Actions Example
+### Redis Enterprise Features
 
-Create `.github/workflows/deploy.yml`:
+Azure Managed Redis Enterprise includes:
+- **RedisJSON** - JSON document support
+- **RedisTimeSeries** - Time series data
+- **RedisBloom** - Probabilistic data structures
+- **Active geo-replication** - Multi-region replication
 
+### CI/CD Integration
+
+For automated deployments, the deployment script can be integrated into:
+- **GitHub Actions** - Use Azure CLI tasks
+- **Azure DevOps** - Use Azure CLI or Bicep tasks
+- **GitLab CI** - Use Azure CLI in Docker containers
+
+Example GitHub Actions workflow:
 ```yaml
-name: Deploy to Azure Container Apps
-
+name: Deploy Redis MCP Server
 on:
   push:
-    branches: [ main ]
-
+    branches: [main]
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Azure Login
-      uses: azure/login@v1
+    - uses: actions/checkout@v4
+    - uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Deploy to Azure
+      run: |
+        ./infrastructure/deploy-redis-stack.sh \
+          --resource-group "rg-redis-mcp-prod" \
+          --location "westus2" \
+          --redis-sku "Balanced_B3"
+```
+
+## 🎯 Next Steps
+
+After successful deployment:
+
+1. **Configure your MCP client** to connect to the deployed server
+2. **Set up monitoring** and alerting in Azure Monitor
+3. **Implement CI/CD** for automated deployments
+4. **Scale resources** based on usage patterns
+5. **Add custom tools** by extending the MCP server code
+
+For more information:
+- [MCP Protocol Documentation](https://modelcontextprotocol.io/)
+- [Azure Container Apps Documentation](https://docs.microsoft.com/en-us/azure/container-apps/)
+- [Azure Managed Redis Documentation](https://docs.microsoft.com/en-us/azure/azure-cache-for-redis/)
+
+---
+
+## 🔑 Using Service Principal for Redis Authentication
+
+For production deployments where managed identity is not feasible, you can use service principal authentication to connect to Azure Redis Enterprise.
+
+### Prerequisites
+
+1. **Create a Service Principal with Certificate**:
+```bash
+# Create service principal with certificate authentication
+SP_NAME="redis-mcp-sp"
+CERT_NAME="redis-mcp-cert"
+
+# Generate self-signed certificate
+openssl req -x509 -newkey rsa:4096 -keyout ${CERT_NAME}-key.pem \
+  -out ${CERT_NAME}-cert.pem -days 365 -nodes \
+  -subj "/CN=${SP_NAME}"
+
+# Combine private key and certificate into single PEM file (required by MCP server)
+cat ${CERT_NAME}-key.pem ${CERT_NAME}-cert.pem > ${CERT_NAME}-combined.pem
+
+# Create service principal with certificate
+SP_OUTPUT=$(az ad sp create-for-rbac --name "$SP_NAME" \
+  --cert @${CERT_NAME}-cert.pem \
+  --create-cert \
+  --output json)
+
+CLIENT_ID=$(echo $SP_OUTPUT | jq -r '.appId')
+TENANT_ID=$(echo $SP_OUTPUT | jq -r '.tenant')
+
+echo "Client ID: $CLIENT_ID"
+echo "Tenant ID: $TENANT_ID"
+echo "Certificate: ${CERT_NAME}-combined.pem"
+```
+
+2. **Assign Azure Managed Redis Enterprise Permissions**:
+```bash
+# Set your Redis Enterprise cluster name
+REDIS_CLUSTER_NAME="your-redis-enterprise-cluster-name"
+DATABASE_NAME="default"
+
+# Assign Redis Enterprise Data Contributor access policy
+# Note: Redis Enterprise uses access policies, not traditional RBAC roles
+az redisenterprise database access-policy-assignment create \
+  --resource-group $RESOURCE_GROUP \
+  --cluster-name $REDIS_CLUSTER_NAME \
+  --database-name $DATABASE_NAME \
+  --access-policy-assignment-name "redis-mcp-policy" \
+  --object-id $CLIENT_ID \
+  --object-id-alias "$SP_NAME" \
+  --access-policy-name "default"
+
+# Verify the access policy assignment
+az redisenterprise database access-policy-assignment show \
+  --resource-group $RESOURCE_GROUP \
+  --cluster-name $REDIS_CLUSTER_NAME \
+  --database-name $DATABASE_NAME \
+  --access-policy-assignment-name "redis-mcp-policy"
+
+# Or list all access policy assignments
+az redisenterprise database access-policy-assignment list \
+  --resource-group $RESOURCE_GROUP \
+  --cluster-name $REDIS_CLUSTER_NAME \
+  --database-name $DATABASE_NAME
+```
+
+### Configuration
+
+#### Option 1: Mount Certificate as File in Container App
+
+```bash
+# Create a secret with the certificate content (base64 encoded)
+CERT_CONTENT=$(cat ${CERT_NAME}-combined.pem | base64)
+
+# Update container app with certificate mounted as volume
+# Note: The secret name 'redis-mcp-cert' becomes the filename in the mounted volume
+az containerapp update \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --set-env-vars \
+    REDIS_ENTRAID_AUTH_METHOD="service_principal" \
+    REDIS_ENTRAID_TENANT_ID="$TENANT_ID" \
+    REDIS_ENTRAID_CLIENT_ID="$CLIENT_ID" \
+    REDIS_ENTRAID_CERT_PATH="/mnt/certs/redis-mcp-cert" \
+  --secrets redis-mcp-cert="$CERT_CONTENT" \
+  --secret-volume-mount "/mnt/certs"
+
+# The certificate will be available at: /mnt/certs/redis-mcp-cert
+# The filename matches the secret name (redis-mcp-cert)
+```
+
+#### Option 2: Use Azure Key Vault for Certificate Storage (Recommended)
+
+```bash
+# Store certificate in Azure Key Vault
+az keyvault certificate import \
+  --vault-name $KEY_VAULT_NAME \
+  --name redis-mcp-cert \
+  --file ${CERT_NAME}-combined.pem
+
+# Grant Container App managed identity access to Key Vault
+CONTAINER_APP_IDENTITY=$(az containerapp show \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query identity.principalId -o tsv)
+
+az keyvault set-policy \
+  --name $KEY_VAULT_NAME \
+  --object-id $CONTAINER_APP_IDENTITY \
+  --certificate-permissions get list \
+  --secret-permissions get list
+
+# Update container app to reference Key Vault certificate
+# Note: When using Key Vault references, the secret name becomes the filename
+az containerapp update \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --set-env-vars \
+    REDIS_ENTRAID_AUTH_METHOD="service_principal" \
+    REDIS_ENTRAID_TENANT_ID="$TENANT_ID" \
+    REDIS_ENTRAID_CLIENT_ID="$CLIENT_ID" \
+    REDIS_ENTRAID_CERT_PATH="/mnt/certs/redis-kv-cert" \
+  --secrets "redis-kv-cert=keyvaultref:https://${KEY_VAULT_NAME}.vault.azure.net/certificates/redis-mcp-cert,identityref:system" \
+  --secret-volume-mount "/mnt/certs"
+
+# The certificate will be available at: /mnt/certs/redis-kv-cert
+# The filename matches the secret name (redis-kv-cert) defined in the --secrets parameter
+```
+
+### Environment Variables for Service Principal
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `REDIS_ENTRAID_AUTH_METHOD` | Set to `service_principal` | `service_principal` |
+| `REDIS_ENTRAID_TENANT_ID` | Azure tenant ID | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| `REDIS_ENTRAID_CLIENT_ID` | Service principal client ID | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| `REDIS_ENTRAID_CERT_PATH` | Path to combined certificate file (private key + cert) | `/mnt/certs/redis-mcp-cert` |
+
+**Important Notes**: 
+- The certificate file must contain both the private key and certificate in PEM format, concatenated in a single file.
+- When mounting secrets as volumes in Azure Container Apps, the **secret name** becomes the **filename** in the mounted path.
+- For Option 1: Secret name `redis-mcp-cert` → File path `/mnt/certs/redis-mcp-cert` (no extension)
+- For Option 2 (Key Vault): Secret name `redis-kv-cert` → File path `/mnt/certs/redis-kv-cert` (no extension)
+
+### Security Considerations
+
+- **Use Azure Key Vault**: Store certificates in Azure Key Vault and reference them via managed identity
+- **Protect private keys**: Never commit certificate files to source control
+- **Certificate expiration**: Monitor certificate expiration dates and set up renewal procedures
+- **Rotate certificates regularly**: Implement a certificate rotation strategy (recommended: 90-365 days)
+- **Principle of least privilege**: Only assign necessary Redis Enterprise access policies
+- **Monitor access**: Enable Azure Monitor for Redis to track authentication and access patterns
+- **Use strong keys**: Use at least RSA 4096-bit keys for production certificates
+
+## 🐳 Container Image Updates & Deployment Best Practices
+
+For production deployments, it's crucial to use unique image tags and follow proper deployment practices.
+
+### Building Images with Unique Tags
+
+#### Using Git Commit SHA (Recommended)
+```bash
+# Get current git commit SHA
+GIT_SHA=$(git rev-parse --short HEAD)
+IMAGE_TAG="$GIT_SHA"
+
+# Build and push image using Azure Container Registry
+# This builds in Azure, no local Docker required
+az acr build \
+  --registry $CONTAINER_REGISTRY_NAME \
+  --image redis-mcp:$IMAGE_TAG \
+  --image redis-mcp:latest \
+  --file Dockerfile \
+  .
+
+# The image is automatically pushed to ACR after build
+echo "Image built and pushed: $CONTAINER_REGISTRY_NAME.azurecr.io/redis-mcp:$IMAGE_TAG"
+```
+
+#### Using Semantic Versioning
+```bash
+# For versioned releases
+VERSION="1.2.3"
+IMAGE_TAG="v$VERSION"
+
+# Build and push with version tag
+az acr build \
+  --registry $CONTAINER_REGISTRY_NAME \
+  --image redis-mcp:$IMAGE_TAG \
+  --file Dockerfile \
+  .
+```
+
+#### Using Timestamp for CI/CD
+```bash
+# For automated builds
+GIT_SHA=$(git rev-parse --short HEAD)
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+IMAGE_TAG="build-$TIMESTAMP-$GIT_SHA"
+
+# Build and push with timestamp tag
+az acr build \
+  --registry $CONTAINER_REGISTRY_NAME \
+  --image redis-mcp:$IMAGE_TAG \
+  --file Dockerfile \
+  .
+```
+
+**Benefits of using `az acr build`:**
+- No local Docker daemon required
+- Build happens in Azure (faster for large images)
+- Automatic authentication and push to ACR
+- Build logs stored in Azure for auditing
+- Can build from Git repositories directly
+
+### Updating Container Apps with New Images
+
+#### Method 1: Update Container App Directly
+```bash
+# Update container app with new image
+az containerapp update \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --image $CONTAINER_REGISTRY_NAME.azurecr.io/redis-mcp:$IMAGE_TAG
+```
+
+#### Method 2: Update Bicep Template (Recommended)
+```bash
+# Update the image tag in parameters file
+jq --arg tag "$IMAGE_TAG" '.parameters.containerImageTag.value = $tag' \
+   infrastructure/container-apps.parameters.json > tmp.json && \
+   mv tmp.json infrastructure/container-apps.parameters.json
+
+# Redeploy with updated image
+az deployment group create \
+  --resource-group $RESOURCE_GROUP \
+  --template-file infrastructure/container-apps.bicep \
+  --parameters @infrastructure/container-apps.parameters.json
+```
+
+### Blue-Green Deployment Strategy
+
+For zero-downtime deployments:
+
+```bash
+# Create new revision with new image
+az containerapp revision copy \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --from-revision latest \
+  --image $CONTAINER_REGISTRY_NAME.azurecr.io/redis-mcp:$IMAGE_TAG
+
+# Get the new revision name
+NEW_REVISION=$(az containerapp revision list \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --query "[0].name" -o tsv)
+
+# Split traffic between revisions (optional testing phase)
+az containerapp ingress traffic set \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --revision-weight $NEW_REVISION=50 latest=50
+
+# After validation, route all traffic to new revision
+az containerapp ingress traffic set \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --revision-weight $NEW_REVISION=100
+
+# Deactivate old revision
+az containerapp revision deactivate \
+  --name $CONTAINER_APP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --revision latest
+```
+
+### CI/CD Pipeline Example
+
+Complete GitHub Actions workflow for building and deploying:
+
+```yaml
+name: Build and Deploy Redis MCP Server
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+env:
+  REGISTRY_NAME: your-registry
+  RESOURCE_GROUP: rg-redis-mcp-prod
+  CONTAINER_APP_NAME: redis-mcp-app
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Generate image metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY_NAME }}.azurecr.io/redis-mcp
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=sha,prefix={{branch}}-
+    
+    - uses: azure/docker-login@v1
+      with:
+        login-server: ${{ env.REGISTRY_NAME }}.azurecr.io
+        username: ${{ secrets.REGISTRY_USERNAME }}
+        password: ${{ secrets.REGISTRY_PASSWORD }}
     
     - name: Build and push
-      run: |
-<<<<<<< HEAD
-        az acr build --registry ${{ secrets.ACR_NAME }} --image redis-mcp-server:${{ github.sha }} .
-=======
-        az acr build --registry ${{ secrets.ACR_NAME }} --image "${{ secrets.IMAGE_NAME }}:${{ github.sha }}" .
->>>>>>> wjason/server-auth
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
     
     - name: Deploy to Container Apps
       run: |
         az containerapp update \
-<<<<<<< HEAD
-          --name redis-mcp-server \
-          --resource-group ${{ secrets.RESOURCE_GROUP }} \
-          --image ${{ secrets.ACR_NAME }}.azurecr.io/redis-mcp-server:${{ github.sha }}
-=======
-          --name ${{ secrets.CONTAINER_APP_NAME }} \
-          --resource-group ${{ secrets.RESOURCE_GROUP }} \
-          --image "${{ secrets.ACR_NAME }}.azurecr.io/${{ secrets.IMAGE_NAME }}:${{ github.sha }}"
->>>>>>> wjason/server-auth
+          --name ${{ env.CONTAINER_APP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --image ${{ needs.build.outputs.image-tag }}
 ```
 
-## Additional Resources
+### Image Management Best Practices
 
-- [Azure Container Apps Documentation](https://docs.microsoft.com/en-us/azure/container-apps/)
-- [Azure Cache for Redis Documentation](https://docs.microsoft.com/en-us/azure/azure-cache-for-redis/)
-- [Redis MCP Server GitHub Repository](https://github.com/redis/mcp-redis)
+1. **Use Multi-Stage Builds**: Reduce image size and security surface
+2. **Scan for Vulnerabilities**: Use `az acr scan` or similar tools
+3. **Keep Registry Clean**: Regularly remove old/unused image tags
+4. **Use Image Signing**: Sign images for production verification
+5. **Monitor Image Usage**: Track which images are deployed where
+
+```bash
+# Example: Clean up old images (keep last 10 versions)
+az acr repository show-tags --name $CONTAINER_REGISTRY_NAME --repository redis-mcp \
+  --orderby time_desc --output tsv | tail -n +11 | \
+  xargs -I {} az acr repository delete --name $CONTAINER_REGISTRY_NAME --image redis-mcp:{} --yes
+```
+
+---
+
+**🎉 Congratulations!** Your Redis MCP Server is now running on Azure Container Apps with enterprise-grade authentication and deployment practices!
