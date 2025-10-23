@@ -8,24 +8,25 @@ import asyncio
 import json
 import logging
 import inspect
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 from starlette.routing import Route
 from starlette.middleware import Middleware
 from sse_starlette import EventSourceResponse
 import uvicorn
 
 from src.common.server import mcp
-from src.common.config import API_KEY_CFG
+from src.common.config import AUTH_CFG
 from src.common.logging_utils import configure_logging
-from src.auth import APIKeyMiddleware
+from src.auth import get_auth_middleware
 
 # Configure logging
 configure_logging()
 logger = logging.getLogger(__name__)
+
 
 
 async def get_tools_list() -> List[Dict[str, Any]]:
@@ -247,19 +248,41 @@ async def mcp_message_endpoint(request: Request) -> Response:
         )
 
 
-# Create Starlette app with API key middleware
+# Create Starlette app with consolidated authentication
 def create_app() -> Starlette:
-    """Create Starlette app with optional API key authentication."""
-    # Configure API key middleware
-    api_keys = None
-    if API_KEY_CFG["enabled"]:
-        api_keys = API_KEY_CFG["api_keys"]
-        if not api_keys:
-            logger.warning("API key authentication enabled but no API keys configured!")
+    """Create Starlette app with configurable authentication middleware."""
+    # Get appropriate middleware based on AUTH_CFG
+    middleware = []
+    auth_middleware = get_auth_middleware(AUTH_CFG)
     
-    middleware = [
-        Middleware(APIKeyMiddleware, api_keys=api_keys)
-    ]
+    if auth_middleware:
+        # Initialize OAuth token verifier if needed
+        if AUTH_CFG.get("method") == "OAUTH":
+            try:
+                from src.auth import get_entra_token_verifier
+                EntraIDTokenVerifier = get_entra_token_verifier()
+                token_verifier = EntraIDTokenVerifier(
+                    tenant_id=AUTH_CFG["oauth_tenant_id"],
+                    client_id=AUTH_CFG["oauth_client_id"], 
+                    required_scopes=AUTH_CFG.get("oauth_required_scopes", [])
+                )
+                # Update middleware with token verifier
+                auth_middleware = Middleware(
+                    auth_middleware.cls,
+                    oauth_config={
+                        "enabled": True,
+                        "tenant_id": AUTH_CFG["oauth_tenant_id"],
+                        "client_id": AUTH_CFG["oauth_client_id"],
+                        "required_scopes": AUTH_CFG.get("oauth_required_scopes", [])
+                    },
+                    token_verifier=token_verifier
+                )
+                logger.info("EntraIDTokenVerifier initialized for HTTP server")
+            except Exception as e:
+                logger.error(f"Failed to initialize OAuth token verifier: {e}", exc_info=True)
+                raise
+        
+        middleware.append(auth_middleware)
     
     return Starlette(
         debug=False,
@@ -290,15 +313,23 @@ def run_server(host: str = "0.0.0.0", port: int = 8000):
     logger.info(f"Listening on {host}:{port}")
     logger.info("=" * 60)
     
-    # Log authentication status
-    if API_KEY_CFG["enabled"]:
-        num_keys = len(API_KEY_CFG["api_keys"])
-        logger.info("🔒 API Key Authentication: ENABLED")
+    # Log consolidated authentication status
+    auth_method = AUTH_CFG.get("method", "NO-AUTH")
+    if auth_method == "NO-AUTH":
+        logger.info("🔓 Authentication: DISABLED")
+        logger.info("   All requests allowed without authentication")
+    elif auth_method == "API-KEY":
+        num_keys = len(AUTH_CFG.get("api_keys", set()))
+        logger.info("🔒 Authentication: API KEY")
         logger.info(f"   Configured API Keys: {num_keys}")
         logger.info("   All requests must include valid X-API-Key header")
-    else:
-        logger.info("🔓 API Key Authentication: DISABLED")
-        logger.info("   All requests allowed without authentication")
+    elif auth_method == "OAUTH":
+        logger.info("🔒 Authentication: OAUTH")
+        logger.info(f"   Tenant ID: {AUTH_CFG.get('oauth_tenant_id')}")
+        logger.info(f"   Client ID: {AUTH_CFG.get('oauth_client_id')}")
+        if AUTH_CFG.get('oauth_required_scopes'):
+            logger.info(f"   Required Scopes: {', '.join(AUTH_CFG['oauth_required_scopes'])}")
+        logger.info("   All requests must include valid Bearer token")
     logger.info("=" * 60)
     
     logger.info("Available endpoints:")

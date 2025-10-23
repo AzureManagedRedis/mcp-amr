@@ -28,11 +28,19 @@ REDIS_CFG = {
     "entraid_managed_identity_client_id": os.getenv("REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID", None),
 }
 
-# API Key Authentication Configuration for HTTP Server
-API_KEY_CFG = {
-    "enabled": os.getenv("MCP_API_KEY_AUTH_ENABLED", "false").lower() in ("true", "1", "yes"),
-    # Support multiple API keys separated by comma
+# MCP Server Authentication Configuration
+# Consolidated authentication system supporting multiple methods
+AUTH_CFG = {
+    # Authentication method: "NO-AUTH", "API-KEY", "OAUTH"
+    "method": os.getenv("MCP_AUTH_METHOD", "NO-AUTH").upper(),
+    
+    # API Key configuration (used when method="API-KEY")
     "api_keys": set(filter(None, os.getenv("MCP_API_KEYS", "").split(","))) if os.getenv("MCP_API_KEYS") else set(),
+    
+    # OAuth configuration (used when method="OAUTH") 
+    "oauth_tenant_id": os.getenv("MCP_OAUTH_TENANT_ID", None),
+    "oauth_client_id": os.getenv("MCP_OAUTH_CLIENT_ID", None),
+    "oauth_required_scopes": os.getenv("MCP_OAUTH_REQUIRED_SCOPES", "").split(",") if os.getenv("MCP_OAUTH_REQUIRED_SCOPES") else [],
 }
 
 
