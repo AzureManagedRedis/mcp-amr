@@ -22,7 +22,7 @@ TEMPLATE_FILE="infrastructure/main.bicep"
 PARAMETERS_FILE="infrastructure/main.parameters.json"
 
 # Variables to be set by user input
-RESOURCE_GROUP=""gi
+RESOURCE_GROUP=""
 LOCATION=""
 REDIS_SKU=""
 
@@ -108,7 +108,7 @@ parse_arguments() {
 }
 
 # Get user input for deployment configuration
-get_user_input() {
+configure_infrastructure() {
     # Skip interactive input if all values are already set via command line
     if [[ -n "$RESOURCE_GROUP" && -n "$LOCATION" && -n "$REDIS_SKU" ]]; then
         print_info "Using command-line provided configuration:"
@@ -200,12 +200,116 @@ get_user_input() {
         done
     fi
     
-    # Confirm configuration
+    print_success "Infrastructure configuration complete"
+}
+
+# Configure authentication method
+configure_authentication() {
+    print_step "Configuring MCP Server Authentication..."
+    
+    print_info "Available authentication methods:"
+    print_info "  1) NO-AUTH  - No authentication required (development/testing)"
+    print_info "  2) API-KEY  - API key authentication via X-API-Key header"
+    print_info "  3) OAUTH    - OAuth JWT token authentication via Authorization header"
+    
+    AUTH_METHOD=""
+    while [[ -z "$AUTH_METHOD" ]]; do
+        echo -n -e "${YELLOW}Select authentication method (1-3): ${NC}"
+        read -r auth_choice
+        
+        case "$auth_choice" in
+            1|"NO-AUTH"|"no-auth")
+                AUTH_METHOD="NO-AUTH"
+                API_KEYS=""
+                OAUTH_TENANT_ID=""
+                OAUTH_CLIENT_ID=""
+                OAUTH_SCOPES=""
+                print_success "Selected: NO-AUTH (no authentication required)"
+                ;;
+            2|"API-KEY"|"api-key")
+                AUTH_METHOD="API-KEY"
+                OAUTH_TENANT_ID=""
+                OAUTH_CLIENT_ID=""
+                OAUTH_SCOPES=""
+                
+                # Collect API keys
+                print_info "API Key Configuration:"
+                print_info "  Enter API keys (comma-separated). You can generate secure keys with: openssl rand -base64 32"
+                echo -n -e "${YELLOW}Enter API keys: ${NC}"
+                read -r API_KEYS
+                
+                if [[ -z "$API_KEYS" ]]; then
+                    print_error "API keys cannot be empty when using API-KEY authentication"
+                    AUTH_METHOD=""
+                    continue
+                fi
+                
+                # Count keys
+                IFS=',' read -ra KEYS_ARRAY <<< "$API_KEYS"
+                KEY_COUNT=${#KEYS_ARRAY[@]}
+                print_success "Selected: API-KEY authentication with $KEY_COUNT key(s)"
+                ;;
+            3|"OAUTH"|"oauth")
+                AUTH_METHOD="OAUTH"
+                API_KEYS=""
+                
+                # Collect OAuth configuration
+                print_info "OAuth Configuration:"
+                
+                echo -n -e "${YELLOW}Enter Azure Tenant ID: ${NC}"
+                read -r OAUTH_TENANT_ID
+                if [[ -z "$OAUTH_TENANT_ID" ]]; then
+                    print_error "Tenant ID is required for OAuth authentication"
+                    AUTH_METHOD=""
+                    continue
+                fi
+                
+                echo -n -e "${YELLOW}Enter Azure Client ID: ${NC}"
+                read -r OAUTH_CLIENT_ID
+                if [[ -z "$OAUTH_CLIENT_ID" ]]; then
+                    print_error "Client ID is required for OAuth authentication"
+                    AUTH_METHOD=""
+                    continue
+                fi
+                
+                echo -n -e "${YELLOW}Enter required scopes (comma-separated, optional): ${NC}"
+                read -r OAUTH_SCOPES
+                
+                print_success "Selected: OAUTH authentication (tenant: $OAUTH_TENANT_ID, client: $OAUTH_CLIENT_ID)"
+                ;;
+            "")
+                print_error "Authentication method selection cannot be empty"
+                ;;
+            *)
+                print_error "Invalid selection. Please choose 1, 2, or 3"
+                ;;
+        esac
+    done
+    
+    print_success "Authentication configuration complete"
+}
+
+# Confirm deployment configuration
+confirm_deployment() {
     echo ""
     print_info "Deployment Configuration:"
     print_info "  Resource Group: $RESOURCE_GROUP"
     print_info "  Location: $LOCATION"
     print_info "  Redis SKU: $REDIS_SKU"
+    print_info "  Authentication: $AUTH_METHOD"
+    
+    case "$AUTH_METHOD" in
+        "API-KEY")
+            IFS=',' read -ra KEYS_ARRAY <<< "$API_KEYS"
+            print_info "  API Keys: ${#KEYS_ARRAY[@]} configured"
+            ;;
+        "OAUTH")
+            print_info "  OAuth Tenant: $OAUTH_TENANT_ID"
+            print_info "  OAuth Client: $OAUTH_CLIENT_ID"
+            [[ -n "$OAUTH_SCOPES" ]] && print_info "  OAuth Scopes: $OAUTH_SCOPES"
+            ;;
+    esac
+    
     echo ""
     echo -n -e "${YELLOW}Continue with this configuration? (y/N): ${NC}"
     read -r confirm
@@ -301,6 +405,11 @@ deploy_infrastructure() {
         --parameters @"$PARAMETERS_FILE" \
         --parameters location="$LOCATION" \
         --parameters redisEnterpriseSku="$REDIS_SKU" \
+        --parameters mcpAuthMethod="$AUTH_METHOD" \
+        --parameters mcpApiKeys="$API_KEYS" \
+        --parameters oauthTenantId="$OAUTH_TENANT_ID" \
+        --parameters oauthClientId="$OAUTH_CLIENT_ID" \
+        --parameters oauthRequiredScopes="$OAUTH_SCOPES" \
         --name "$DEPLOYMENT_NAME" \
         --output table
     
@@ -462,10 +571,26 @@ print_summary() {
     echo "  MCP Server: https://$CONTAINER_APP_FQDN/message"
     echo "  Redis Host: $REDIS_HOST_NAME"
     echo ""
-    echo -e "${BLUE}� API Authentication:${NC}"
-    echo "  MCP API Key Authentication: ENABLED"
-    echo "  API Keys configured from parameters file"
-    echo "  Test with: curl -H \"X-API-Key: your-api-key\" https://$CONTAINER_APP_FQDN/message"
+    echo -e "${BLUE}🔐 Authentication:${NC}"
+    case "$AUTH_METHOD" in
+        "NO-AUTH")
+            echo "  Authentication: DISABLED"
+            echo "  Test with: curl https://$CONTAINER_APP_FQDN/health"
+            ;;
+        "API-KEY")
+            IFS=',' read -ra KEYS_ARRAY <<< "$API_KEYS"
+            echo "  Authentication: API KEY"
+            echo "  API Keys: ${#KEYS_ARRAY[@]} configured"
+            echo "  Test with: curl -H \"X-API-Key: your-api-key\" https://$CONTAINER_APP_FQDN/health"
+            ;;
+        "OAUTH")
+            echo "  Authentication: OAUTH"
+            echo "  Tenant ID: $OAUTH_TENANT_ID"
+            echo "  Client ID: $OAUTH_CLIENT_ID"
+            [[ -n "$OAUTH_SCOPES" ]] && echo "  Required Scopes: $OAUTH_SCOPES"
+            echo "  Test with: curl -H \"Authorization: Bearer jwt-token\" https://$CONTAINER_APP_FQDN/health"
+            ;;
+    esac
     echo ""
     echo -e "${BLUE}�🔧 Management Commands:${NC}"
     echo "  View logs: az containerapp logs show --name $CONTAINER_APP_NAME --resource-group $RESOURCE_GROUP --follow"
@@ -484,7 +609,9 @@ main() {
     print_header "REDIS MCP SERVER - COMPLETE STACK DEPLOYMENT"
     
     parse_arguments "$@"
-    get_user_input
+    configure_infrastructure
+    configure_authentication   # Configure authentication method and parameters
+    confirm_deployment        # Confirm all configuration before deployment
     check_prerequisites
     create_resource_group
     validate_template

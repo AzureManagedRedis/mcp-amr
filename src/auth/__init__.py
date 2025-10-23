@@ -10,9 +10,6 @@ from .middleware import BearerAuthMiddleware
 from .entra_token_verifier import EntraIDTokenVerifier
 
 __all__ = [
-    "BearerAuthMiddleware", 
-    "APIKeyMiddleware", 
-    "EntraIDTokenVerifier",
     "get_auth_middleware"
 ]
 
@@ -57,14 +54,21 @@ def get_auth_middleware(auth_config: dict) -> Optional[Middleware]:
             
         _logger.info(f"Using OAuth authentication (tenant: {tenant_id}, client: {client_id})")
         
-        # Create OAuth config for BearerAuthMiddleware
-        oauth_cfg = {
-            "enabled": True,
-            "tenant_id": tenant_id,
-            "client_id": client_id,
-            "required_scopes": required_scopes
-        }
-        return Middleware(BearerAuthMiddleware, oauth_config=oauth_cfg)
+        # Initialize token verifier
+        try:
+            token_verifier = EntraIDTokenVerifier(
+                tenant_id=tenant_id,
+                client_id=client_id,
+                required_scopes=required_scopes
+            )
+            _logger.info("EntraIDTokenVerifier initialized successfully")
+        except Exception as e:
+            _logger.error(f"Failed to initialize OAuth token verifier: {e}")
+            _logger.warning("Falling back to NO-AUTH due to token verifier error")
+            return None
+        
+        # Create BearerAuthMiddleware with token verifier
+        return Middleware(BearerAuthMiddleware, token_verifier=token_verifier)
         
     else:
         _logger.error(f"Unknown authentication method: {method}. Falling back to NO-AUTH.")

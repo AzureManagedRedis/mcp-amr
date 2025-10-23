@@ -1,7 +1,7 @@
 """Authentication middleware for HTTP server."""
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -13,16 +13,14 @@ logger = logging.getLogger(__name__)
 class BearerAuthMiddleware(BaseHTTPMiddleware):
     """Middleware to validate Bearer tokens for OAuth-protected endpoints."""
     
-    def __init__(self, app, oauth_config: Optional[Dict[str, Any]] = None, token_verifier=None):
+    def __init__(self, app, token_verifier=None):
         super().__init__(app)
-        self.oauth_config = oauth_config or {}
         self.token_verifier = token_verifier
-        self.oauth_enabled = self.oauth_config.get("enabled", False)
         
-        if self.oauth_enabled:
-            logger.info("OAuth authentication enabled for HTTP server")
+        if self.token_verifier:
+            logger.info("OAuth Bearer authentication middleware initialized")
         else:
-            logger.info("OAuth authentication disabled for HTTP server")
+            logger.warning("BearerAuthMiddleware created without token verifier - will allow all requests")
     
     async def dispatch(self, request: Request, call_next):
         """Validate Bearer token before processing request."""
@@ -30,8 +28,8 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
         if request.url.path == "/health":
             return await call_next(request)
         
-        # If OAuth is disabled, allow all requests
-        if not self.oauth_enabled or not self.token_verifier:
+        # If no token verifier configured, allow all requests
+        if not self.token_verifier:
             return await call_next(request)
         
         # Extract Bearer token from Authorization header

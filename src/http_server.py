@@ -251,37 +251,11 @@ async def mcp_message_endpoint(request: Request) -> Response:
 # Create Starlette app with consolidated authentication
 def create_app() -> Starlette:
     """Create Starlette app with configurable authentication middleware."""
-    # Get appropriate middleware based on AUTH_CFG
+    # Get appropriate middleware based on AUTH_CFG - all initialization handled in auth module
     middleware = []
     auth_middleware = get_auth_middleware(AUTH_CFG)
     
     if auth_middleware:
-        # Initialize OAuth token verifier if needed
-        if AUTH_CFG.get("method") == "OAUTH":
-            try:
-                from src.auth import get_entra_token_verifier
-                EntraIDTokenVerifier = get_entra_token_verifier()
-                token_verifier = EntraIDTokenVerifier(
-                    tenant_id=AUTH_CFG["oauth_tenant_id"],
-                    client_id=AUTH_CFG["oauth_client_id"], 
-                    required_scopes=AUTH_CFG.get("oauth_required_scopes", [])
-                )
-                # Update middleware with token verifier
-                auth_middleware = Middleware(
-                    auth_middleware.cls,
-                    oauth_config={
-                        "enabled": True,
-                        "tenant_id": AUTH_CFG["oauth_tenant_id"],
-                        "client_id": AUTH_CFG["oauth_client_id"],
-                        "required_scopes": AUTH_CFG.get("oauth_required_scopes", [])
-                    },
-                    token_verifier=token_verifier
-                )
-                logger.info("EntraIDTokenVerifier initialized for HTTP server")
-            except Exception as e:
-                logger.error(f"Failed to initialize OAuth token verifier: {e}", exc_info=True)
-                raise
-        
         middleware.append(auth_middleware)
     
     return Starlette(

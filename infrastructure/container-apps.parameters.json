@@ -50,6 +50,21 @@
     "logLevel": {
       "value": "INFO"
     },
+    "mcpAuthMethod": {
+      "value": "NO-AUTH"
+    },
+    "mcpApiKeys": {
+      "value": ""
+    },
+    "oauthTenantId": {
+      "value": ""
+    },
+    "oauthClientId": {
+      "value": ""
+    },
+    "oauthRequiredScopes": {
+      "value": ""
+    },
     "tags": {
       "value": {
         "Environment": "Development",

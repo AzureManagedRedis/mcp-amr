@@ -50,12 +50,26 @@ param memory string = '0.5Gi'
 ])
 param logLevel string = 'INFO'
 
-@description('Enable MCP API key authentication')
-param mcpApiKeyAuthEnabled bool = true
+@description('MCP Authentication Method')
+@allowed([
+  'NO-AUTH'
+  'API-KEY'
+  'OAUTH'
+])
+param mcpAuthMethod string = 'NO-AUTH'
 
-@description('MCP API keys (comma-separated list)')
+@description('MCP API keys (comma-separated list) - Required when mcpAuthMethod is API-KEY')
 @secure()
-param mcpApiKeys string
+param mcpApiKeys string = ''
+
+@description('OAuth Tenant ID - Required when mcpAuthMethod is OAUTH')
+param oauthTenantId string = ''
+
+@description('OAuth Client ID - Required when mcpAuthMethod is OAUTH')
+param oauthClientId string = ''
+
+@description('OAuth Required Scopes (comma-separated) - Optional for OAUTH method')
+param oauthRequiredScopes string = ''
 
 @description('Tags to apply to all resources')
 param tags object = {
@@ -142,8 +156,11 @@ module containerAppsModule 'container-apps.bicep' = {
     cpu: cpu
     memory: memory
     logLevel: logLevel
-    mcpApiKeyAuthEnabled: mcpApiKeyAuthEnabled
+    mcpAuthMethod: mcpAuthMethod
     mcpApiKeys: mcpApiKeys
+    oauthTenantId: oauthTenantId
+    oauthClientId: oauthClientId
+    oauthRequiredScopes: oauthRequiredScopes
     tags: tags
   }
 

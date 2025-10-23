@@ -63,12 +63,26 @@ param memory string = '0.5Gi'
 ])
 param logLevel string = 'INFO'
 
-@description('Enable MCP API key authentication')
-param mcpApiKeyAuthEnabled bool = true
+@description('MCP Authentication Method')
+@allowed([
+  'NO-AUTH'
+  'API-KEY'
+  'OAUTH'
+])
+param mcpAuthMethod string = 'NO-AUTH'
 
-@description('MCP API keys (comma-separated list)')
+@description('MCP API keys (comma-separated list) - Required when mcpAuthMethod is API-KEY')
 @secure()
-param mcpApiKeys string
+param mcpApiKeys string = ''
+
+@description('OAuth Tenant ID - Required when mcpAuthMethod is OAUTH')
+param oauthTenantId string = ''
+
+@description('OAuth Client ID - Required when mcpAuthMethod is OAUTH')
+param oauthClientId string = ''
+
+@description('OAuth Required Scopes (comma-separated) - Optional for OAUTH method')
+param oauthRequiredScopes string = ''
 
 @description('Tags to apply to all resources')
 param tags object = {}
@@ -153,12 +167,24 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
               value: logLevel
             }
             {
-              name: 'MCP_API_KEY_AUTH_ENABLED'
-              value: string(mcpApiKeyAuthEnabled)
+              name: 'MCP_AUTH_METHOD'
+              value: mcpAuthMethod
             }
             {
               name: 'MCP_API_KEYS'
               value: mcpApiKeys
+            }
+            {
+              name: 'MCP_OAUTH_TENANT_ID'
+              value: oauthTenantId
+            }
+            {
+              name: 'MCP_OAUTH_CLIENT_ID'
+              value: oauthClientId
+            }
+            {
+              name: 'MCP_OAUTH_REQUIRED_SCOPES'
+              value: oauthRequiredScopes
             }
           ]
           resources: {

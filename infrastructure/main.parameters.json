@@ -38,11 +38,20 @@
     "logLevel": {
       "value": "INFO"
     },
-    "mcpApiKeyAuthEnabled": {
-      "value": true
+    "mcpAuthMethod": {
+      "value": "NO-AUTH"
     },
     "mcpApiKeys": {
-      "value": "api-key-1,api-key-2,api-key-3"
+      "value": ""
+    },
+    "oauthTenantId": {
+      "value": ""
+    },
+    "oauthClientId": {
+      "value": ""
+    },
+    "oauthRequiredScopes": {
+      "value": ""
     },
     "tags": {
       "value": {
