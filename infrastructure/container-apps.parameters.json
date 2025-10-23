@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "containerAppName": {
+      "value": "redis-mcp-app"
+    },
+    "containerAppEnvName": {
+      "value": "redis-mcp-env"
+    },
+    "location": {
+      "value": "East US"
+    },
+    "managedIdentityId": {
+      "value": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example/providers/Microsoft.ManagedIdentity/userAssignedIdentities/identity-example"
+    },
+    "managedIdentityClientId": {
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "logAnalyticsWorkspaceCustomerId": {
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "logAnalyticsWorkspaceSharedKey": {
+      "value": "example-key"
+    },
+    "containerRegistryLoginServer": {
+      "value": "redismcpacr.azurecr.io"
+    },
+    "imageTag": {
+      "value": "latest"
+    },
+    "redisHostName": {
+      "value": "redis-example.redis.cache.windows.net"
+    },
+    "redisPort": {
+      "value": 10000
+    },
+    "minReplicas": {
+      "value": 1
+    },
+    "maxReplicas": {
+      "value": 5
+    },
+    "cpu": {
+      "value": "0.25"
+    },
+    "memory": {
+      "value": "0.5Gi"
+    },
+    "logLevel": {
+      "value": "INFO"
+    },
+    "tags": {
+      "value": {
+        "Environment": "Development",
+        "Project": "Redis-MCP",
+        "Service": "ContainerApps"
+      }
+    }
+  }
+}

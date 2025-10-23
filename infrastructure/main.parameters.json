@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "baseName": {
+      "value": "redis-mcp"
+    },
+    "location": {
+      "value": "East US"
+    },
+    "environment": {
+      "value": "dev"
+    },
+    "redisEnterpriseSku": {
+      "value": "Balanced_B5"
+    },
+    "enableRedisJson": {
+      "value": false
+    },
+    "enableRedisTimeSeries": {
+      "value": false
+    },
+    "enableRedisBloom": {
+      "value": false
+    },
+    "minReplicas": {
+      "value": 1
+    },
+    "maxReplicas": {
+      "value": 5
+    },
+    "cpu": {
+      "value": "0.25"
+    },
+    "memory": {
+      "value": "0.5Gi"
+    },
+    "logLevel": {
+      "value": "INFO"
+    },
+    "mcpApiKeyAuthEnabled": {
+      "value": true
+    },
+    "mcpApiKeys": {
+      "value": "api-key-1,api-key-2,api-key-3"
+    },
+    "tags": {
+      "value": {
+        "Environment": "Development",
+        "Project": "Redis-MCP",
+        "Service": "AzureManagedRedis",
+        "Owner": "DevTeam",
+        "CreatedBy": "Bicep"
+      }
+    }
+  }
+}

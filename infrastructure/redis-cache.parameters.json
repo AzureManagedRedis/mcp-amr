@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "redisEnterpriseName": {
+      "value": "redis-mcp-managed"
+    },
+    "location": {
+      "value": "East US"
+    },
+    "redisEnterpriseSku": {
+      "value": "Balanced_B5"
+    },
+    "enableRedisJson": {
+      "value": false
+    },
+    "enableRedisTimeSeries": {
+      "value": false
+    },
+    "enableRedisBloom": {
+      "value": false
+    },
+    "managedIdentityObjectId": {
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "tags": {
+      "value": {
+        "Environment": "Development",
+        "Project": "Redis-MCP",
+        "Service": "AzureManagedRedis",
+        "Owner": "DevTeam"
+      }
+    },
+    "enableDiagnostics": {
+      "value": false
+    },
+    "logAnalyticsWorkspaceName": {
+      "value": "redis-mcp-managed-logs"
+    }
+  }
+}
