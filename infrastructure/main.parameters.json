@@ -14,8 +14,11 @@
     "redisEnterpriseSku": {
       "value": "Balanced_B5"
     },
+    "enableRediSearch": {
+      "value": true
+    },
     "enableRedisJson": {
-      "value": false
+      "value": true
     },
     "enableRedisTimeSeries": {
       "value": false

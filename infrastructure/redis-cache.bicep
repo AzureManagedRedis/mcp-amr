@@ -16,6 +16,9 @@ param location string = resourceGroup().location
 ])
 param redisEnterpriseSku string = 'Balanced_B1'
 
+@description('Enable RediSearch module')
+param enableRediSearch bool = true
+
 @description('Enable RedisJSON module')
 param enableRedisJson bool = false
 
@@ -54,9 +57,9 @@ resource redisEnterpriseCluster 'Microsoft.Cache/redisEnterprise@2025-04-01' = {
   }
 }
 
-// Build modules array - RedisSearch is always enabled, others are optional
+// Build modules array - RediSearch and other modules are optional
 var modules = concat(
-  [{ name: 'RediSearch' }],
+  enableRediSearch ? [{ name: 'RediSearch' }] : [],
   enableRedisJson ? [{ name: 'RedisJSON' }] : [],
   enableRedisTimeSeries ? [{ name: 'RedisTimeSeries' }] : [],
   enableRedisBloom ? [{ name: 'RedisBloom' }] : []

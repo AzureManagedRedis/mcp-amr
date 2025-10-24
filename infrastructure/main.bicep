@@ -16,6 +16,9 @@ param environment string = 'dev'
 ])
 param redisEnterpriseSku string = 'Balanced_B1'
 
+@description('Enable RediSearch module')
+param enableRediSearch bool = true
+
 @description('Enable RedisJSON module')
 param enableRedisJson bool = false
 
@@ -115,6 +118,7 @@ module redisModule 'redis-cache.bicep' = {
     redisEnterpriseName: redisName
     location: location
     redisEnterpriseSku: redisEnterpriseSku
+    enableRediSearch: enableRediSearch
     enableRedisJson: enableRedisJson
     enableRedisTimeSeries: enableRedisTimeSeries
     enableRedisBloom: enableRedisBloom
