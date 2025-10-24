@@ -4,9 +4,9 @@
 # This script deploys the entire Redis MCP server infrastructure using Bicep
 # 
 # USAGE: Run this script from the PROJECT ROOT directory
-#        ./infrastructure/deploy-redis-stack.sh                              # Interactive mode
-#        ./infrastructure/deploy-redis-stack.sh -g my-rg -l westus2 -s Balanced_B1  # Non-interactive mode
-#        ./infrastructure/deploy-redis-stack.sh --help                       # Show help
+#        ./infrastructure/deploy-redis-mcp.sh                              # Interactive mode
+#        ./infrastructure/deploy-redis-mcp.sh -g my-rg -l westus2 -s Balanced_B1  # Non-interactive mode
+#        ./infrastructure/deploy-redis-mcp.sh --help                       # Show help
 
 set -e  # Exit on error
 

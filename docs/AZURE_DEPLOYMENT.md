@@ -7,13 +7,13 @@ This guide walks you through deploying the Redis MCP Server to Azure Container A
 The easiest way to deploy is using our **interactive deployment script**:
 
 ```bash
-./infrastructure/deploy-redis-stack.sh
+./infrastructure/deploy-redis-mcp.sh
 ```
 
 This script will:
 1. **Configure infrastructure** (resource group, location, Redis SKU)  
 2. **Configure authentication** (NO-AUTH, API-KEY, or OAUTH)
-3. **Deploy complete stack** (Redis Enterprise, Container Apps, networking)
+3. **Deploy complete stack** (Azure Managed Redis, Container Apps, networking)
 4. **Build and deploy** your MCP server automatically
 
 ## 📋 Prerequisites
@@ -83,7 +83,7 @@ The deployment script supports three authentication methods:
 For CI/CD pipelines, you can provide parameters directly:
 
 ```bash
-./infrastructure/deploy-redis-stack.sh \
+./infrastructure/deploy-redis-mcp.sh \
   --resource-group "rg-redis-mcp-prod" \
   --location "westus2" \
   --redis-sku "Balanced_B3"
@@ -96,7 +96,7 @@ For CI/CD pipelines, you can provide parameters directly:
 The automated deployment creates:
 
 ### Azure Resources:
-- **Azure Managed Redis Enterprise** - High-performance Redis with modules
+- **Azure Managed Redis** - High-performance Redis with modules
 - **Container Apps Environment** - Serverless container hosting  
 - **Container Registry** - Private container image storage
 - **User-Assigned Managed Identity** - Secure Redis access
@@ -266,7 +266,7 @@ The deployment automatically configures:
 
 For production workloads:
 - **Multi-region deployment** (deploy to multiple regions)
-- **Redis Enterprise clustering** (automatic in Azure Managed Redis)
+- **Azure Managed Redis clustering** (automatic in Azure Managed Redis)
 - **Azure Front Door** for global load balancing
 - **Application Insights** for monitoring and alerting
 
@@ -279,9 +279,9 @@ The server supports custom authentication middleware. See the `src/auth/` direct
 - `BearerAuthMiddleware` - OAuth JWT authentication
 - Custom middleware can be added following the same pattern
 
-### Redis Enterprise Features
+### Azure Managed Redis Features
 
-Azure Managed Redis Enterprise includes:
+Azure Managed Redis includes:
 - **RedisJSON** - JSON document support
 - **RedisTimeSeries** - Time series data
 - **RedisBloom** - Probabilistic data structures
@@ -310,7 +310,7 @@ jobs:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
     - name: Deploy to Azure
       run: |
-        ./infrastructure/deploy-redis-stack.sh \
+        ./infrastructure/deploy-redis-mcp.sh \
           --resource-group "rg-redis-mcp-prod" \
           --location "westus2" \
           --redis-sku "Balanced_B3"
@@ -335,7 +335,7 @@ For more information:
 
 ## 🔑 Using Service Principal for Redis Authentication
 
-For production deployments where managed identity is not feasible, you can use service principal authentication to connect to Azure Redis Enterprise.
+For production deployments where managed identity is not feasible, you can use service principal authentication to connect to Azure Managed Redis.
 
 ### Prerequisites
 
@@ -367,14 +367,14 @@ echo "Tenant ID: $TENANT_ID"
 echo "Certificate: ${CERT_NAME}-combined.pem"
 ```
 
-2. **Assign Azure Managed Redis Enterprise Permissions**:
+2. **Assign Azure Managed Redis Permissions**:
 ```bash
-# Set your Redis Enterprise cluster name
-REDIS_CLUSTER_NAME="your-redis-enterprise-cluster-name"
+# Set your Azure Managed Redis cluster name
+REDIS_CLUSTER_NAME="your-redis-cluster-name"
 DATABASE_NAME="default"
 
-# Assign Redis Enterprise Data Contributor access policy
-# Note: Redis Enterprise uses access policies, not traditional RBAC roles
+# Assign Azure Managed Redis Data Contributor access policy
+# Note: Azure Managed Redis uses access policies, not traditional RBAC roles
 az redisenterprise database access-policy-assignment create \
   --resource-group $RESOURCE_GROUP \
   --cluster-name $REDIS_CLUSTER_NAME \
@@ -482,7 +482,7 @@ az containerapp update \
 - **Protect private keys**: Never commit certificate files to source control
 - **Certificate expiration**: Monitor certificate expiration dates and set up renewal procedures
 - **Rotate certificates regularly**: Implement a certificate rotation strategy (recommended: 90-365 days)
-- **Principle of least privilege**: Only assign necessary Redis Enterprise access policies
+- **Principle of least privilege**: Only assign necessary Azure Managed Redis access policies
 - **Monitor access**: Enable Azure Monitor for Redis to track authentication and access patterns
 - **Use strong keys**: Use at least RSA 4096-bit keys for production certificates
 

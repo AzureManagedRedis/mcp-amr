@@ -7,7 +7,7 @@ This directory contains the complete Infrastructure as Code (IaC) solution for d
 The complete stack includes:
 
 1. **User-Assigned Managed Identity** - For secure authentication between services
-2. **Azure Managed Redis** - Redis Enterprise with RedisSearch and RedisJSON modules
+2. **Azure Managed Redis** - Azure Managed Redis with RedisSearch and RedisJSON modules
 3. **Azure Container Registry** - For storing the MCP server container image
 4. **Container Apps Environment** - Serverless container hosting platform
 5. **Container App** - The MCP server application
@@ -19,7 +19,7 @@ The complete stack includes:
 infrastructure/
 ├── main.bicep                     # Main orchestration template
 ├── main.parameters.json          # Parameters for main template
-├── redis-cache.bicep             # Redis Enterprise module
+├── redis-cache.bicep             # Azure Managed Redis module
 ├── redis-cache.parameters.json   # Redis-specific parameters
 ├── deploy-complete-stack.sh       # Complete deployment script
 ├── deploy-redis.sh               # Redis-only deployment script
@@ -98,14 +98,14 @@ resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-
 - Eliminates need for password management
 - Enables Azure RBAC for Redis access
 
-### 2. Azure Managed Redis Enterprise
+### 2. Azure Managed Redis
 
 ```bicep
 module redisModule 'redis-cache.bicep'
 ```
 
 **Features**:
-- Redis Enterprise with RedisSearch and RedisJSON modules
+- Azure Managed Redis with RedisSearch and RedisJSON modules
 - NoEviction policy (required for RedisSearch)
 - TLS 1.2 encryption
 - Integrated with Log Analytics for monitoring
