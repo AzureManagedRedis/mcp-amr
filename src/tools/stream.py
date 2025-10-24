@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from redis.exceptions import RedisError
 
@@ -8,14 +8,14 @@ from src.common.server import mcp
 
 @mcp.tool()
 async def xadd(
-    key: str, fields: Dict[str, Any], expiration: Optional[int] = None
+    key: str, fields: Dict[str, Any], expiration: int = 0
 ) -> str:
     """Add an entry to a Redis stream with an optional expiration time.
 
     Args:
         key (str): The stream key.
         fields (dict): The fields and values for the stream entry.
-        expiration (int, optional): Expiration time in seconds.
+        expiration (int): Expiration time in seconds. Use 0 for no expiration (default: 0).
 
     Returns:
         str: The ID of the added entry or an error message.
@@ -23,10 +23,10 @@ async def xadd(
     try:
         r = RedisConnectionManager.get_connection()
         entry_id = await run_redis_command(r.xadd, key, fields)
-        if expiration:
+        if expiration and expiration > 0:
             await run_redis_command(r.expire, key, expiration)
         return f"Successfully added entry {entry_id} to {key}" + (
-            f" with expiration {expiration} seconds" if expiration else ""
+            f" with expiration {expiration} seconds" if expiration and expiration > 0 else ""
         )
     except RedisError as e:
         return f"Error adding to stream {key}: {str(e)}"

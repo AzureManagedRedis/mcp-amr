@@ -1,4 +1,5 @@
-from typing import List, Union, Optional
+from typing import Union, List
+import json
 
 import numpy as np
 from redis.exceptions import RedisError
@@ -9,15 +10,15 @@ from src.common.server import mcp
 
 @mcp.tool()
 async def hset(
-    name: str, key: str, value: str | int | float, expire_seconds: Optional[int] = None
+    name: str, key: str, value: str, expire_seconds: int = 0
 ) -> str:
     """Set a field in a hash stored at key with an optional expiration time.
 
     Args:
         name: The Redis hash key.
         key: The field name inside the hash.
-        value: The value to set.
-        expire_seconds: Optional; time in seconds after which the key should expire.
+        value: The value to set (as string).
+        expire_seconds: Time in seconds after which the key should expire. Use 0 for no expiration (default: 0).
 
     Returns:
         A success message or an error message.
@@ -26,11 +27,11 @@ async def hset(
         r = RedisConnectionManager.get_connection()
         await run_redis_command(r.hset, name, key, str(value))
 
-        if expire_seconds is not None:
+        if expire_seconds and expire_seconds > 0:
             await run_redis_command(r.expire, name, expire_seconds)
 
         return f"Field '{key}' set successfully in hash '{name}'." + (
-            f" Expires in {expire_seconds} seconds." if expire_seconds else ""
+            f" Expires in {expire_seconds} seconds." if expire_seconds and expire_seconds > 0 else ""
         )
     except RedisError as e:
         return f"Error setting field '{key}' in hash '{name}': {str(e)}"
@@ -130,7 +131,7 @@ async def set_vector_in_hash(
         vector: The vector (list of numbers) to store in the hash.
 
     Returns:
-        True if the vector was successfully stored, False otherwise.
+        Union[bool, str]: True if the vector was successfully stored, or error message.
     """
     try:
         r = RedisConnectionManager.get_connection()

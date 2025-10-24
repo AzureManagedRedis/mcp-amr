@@ -38,7 +38,7 @@ async def json_set(
     name: str,
     path: str,
     value: JsonValue,
-    expire_seconds: Optional[int] = None,
+    expire_seconds: int = 0,
 ) -> str:
     """Set a JSON value in Redis at a given path with an optional expiration time.
 
@@ -46,7 +46,7 @@ async def json_set(
         name: The Redis key where the JSON document is stored.
         path: The JSON path where the value should be set.
         value: The JSON value to store.
-        expire_seconds: Optional; time in seconds after which the key should expire.
+        expire_seconds: Time in seconds after which the key should expire. Use 0 for no expiration (default: 0).
 
     Returns:
         A success message or an error message.
@@ -55,11 +55,11 @@ async def json_set(
         r = RedisConnectionManager.get_connection()
         await run_redis_command(r.json().set, name, path, value)
 
-        if expire_seconds is not None:
+        if expire_seconds and expire_seconds > 0:
             await run_redis_command(r.expire, name, expire_seconds)
 
         return f"JSON value set at path '{path}' in '{name}'." + (
-            f" Expires in {expire_seconds} seconds." if expire_seconds else ""
+            f" Expires in {expire_seconds} seconds." if expire_seconds and expire_seconds > 0 else ""
         )
     except RedisError as e:
         return f"Error setting JSON value at path '{path}' in '{name}': {str(e)}"
