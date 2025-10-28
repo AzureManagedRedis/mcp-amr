@@ -9,37 +9,49 @@
       "value": "${AZURE_LOCATION}"
     },
     "redisEnterpriseSku": {
-      "value": "Balanced_B1"
+      "value": "${REDIS_ENTERPRISE_SKU=Balanced_B1}"
     },
     "enableRediSearch": {
-      "value": true
+      "value": "${ENABLE_REDIS_SEARCH=true}"
     },
     "enableRedisJson": {
-      "value": true
+      "value": "${ENABLE_REDIS_JSON=true}"
     },
     "enableRedisTimeSeries": {
-      "value": false
+      "value": "${ENABLE_REDIS_TIMESERIES=false}"
     },
     "enableRedisBloom": {
-      "value": false
+      "value": "${ENABLE_REDIS_BLOOM=false}"
     },
     "minReplicas": {
-      "value": 1
+      "value": "${MIN_REPLICAS=1}"
     },
     "maxReplicas": {
-      "value": 5
+      "value": "${MAX_REPLICAS=5}"
     },
     "cpu": {
-      "value": "0.25"
+      "value": "${CPU=0.25}"
     },
     "memory": {
-      "value": "0.5Gi"
+      "value": "${MEMORY=0.5Gi}"
     },
     "logLevel": {
-      "value": "INFO"
+      "value": "${LOG_LEVEL=INFO}"
     },
     "mcpAuthMethod": {
-      "value": "NO-AUTH"
+      "value": "${MCP_AUTH_METHOD=NO-AUTH}"
+    },
+    "mcpApiKeys": {
+      "value": "${MCP_API_KEYS=}"
+    },
+    "oauthTenantId": {
+      "value": "${OAUTH_TENANT_ID=}"
+    },
+    "oauthClientId": {
+      "value": "${OAUTH_CLIENT_ID=}"
+    },
+    "oauthRequiredScopes": {
+      "value": "${OAUTH_REQUIRED_SCOPES=}"
     }
   }
 }

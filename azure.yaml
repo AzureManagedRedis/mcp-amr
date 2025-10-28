@@ -4,15 +4,6 @@ name: mcp-redis
 metadata:
   template: mcp-redis@0.0.1-beta
 
-services:
-  api:
-    project: .
-    language: python
-    host: containerapp
-    docker:
-      path: ./Dockerfile
-      context: .
-
 hooks:
   postprovision:
     shell: sh
@@ -47,6 +38,8 @@ hooks:
         --image "${ACR_LOGIN_SERVER}/redis-mcp-server:${IMAGE_TAG}" \
         --output table
       
-      echo "Deployment complete! Image: redis-mcp-server:${IMAGE_TAG}"
+      echo "✅ Deployment complete! Image: redis-mcp-server:${IMAGE_TAG}"
+      echo "📍 MCP Server URL: https://$(azd env get-value AZURE_CONTAINER_APP_FQDN)/message"
+      echo "🔍 Health check: https://$(azd env get-value AZURE_CONTAINER_APP_FQDN)/health"
     continueOnError: false
     interactive: true

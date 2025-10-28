@@ -86,7 +86,7 @@ var tags = {
 }
 
 // Generate resource group name
-var resourceGroupName = 'rg-${environmentName}'
+var resourceGroupName = 'rg-mcp-${environmentName}'
 
 // Create resource group
 resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
