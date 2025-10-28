@@ -6,6 +6,10 @@ dist/
 wheels/
 *.egg-info
 
+# Azure Developer CLI
+.azure/
+!.azure/dev/.env.template
+
 # Virtual environments
 .venv
 .env
@@ -28,3 +32,14 @@ uv.lock
 /coverage.xml
 /.coverage
 /htmlcov/
+
+# Certificates (if using service principal auth)
+*.pem
+*.pfx
+*.cer
+*.crt
+*.key
+
+# OS files
+.DS_Store
+Thumbs.db

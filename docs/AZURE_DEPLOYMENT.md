@@ -7,7 +7,7 @@ This guide walks you through deploying the Redis MCP Server to Azure Container A
 The easiest way to deploy is using our **interactive deployment script**:
 
 ```bash
-./infrastructure/deploy-redis-mcp.sh
+./infra/deploy-redis-mcp.sh
 ```
 
 This script will:
@@ -57,7 +57,7 @@ The deployment script supports three authentication methods:
 
 1. **Run the deployment script**:
    ```bash
-   ./infrastructure/deploy-redis-stack.sh
+   ./infra/deploy-redis-stack.sh
    ```
 
 2. **Configure infrastructure** when prompted:
@@ -83,7 +83,7 @@ The deployment script supports three authentication methods:
 For CI/CD pipelines, you can provide parameters directly:
 
 ```bash
-./infrastructure/deploy-redis-mcp.sh \
+./infra/deploy-redis-mcp.sh \
   --resource-group "rg-redis-mcp-prod" \
   --location "westus2" \
   --redis-sku "Balanced_B3"
@@ -140,8 +140,8 @@ REDIS_ENTRAID_MANAGED_IDENTITY_CLIENT_ID=your-identity-id
 # Deploy with Bicep templates
 az deployment group create \
   --resource-group $RESOURCE_GROUP \
-  --template-file infrastructure/main.bicep \
-  --parameters @infrastructure/main.parameters.json \
+  --template-file infra/resources.bicep \
+  --parameters @infra/resources.parameters.json \
   --parameters location=$LOCATION \
   --parameters mcpAuthMethod="API-KEY" \
   --parameters mcpApiKeys="key1,key2,key3"
@@ -310,7 +310,7 @@ jobs:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
     - name: Deploy to Azure
       run: |
-        ./infrastructure/deploy-redis-mcp.sh \
+        ./infra/deploy-redis-mcp.sh \
           --resource-group "rg-redis-mcp-prod" \
           --location "westus2" \
           --redis-sku "Balanced_B3"
@@ -562,14 +562,14 @@ az containerapp update \
 ```bash
 # Update the image tag in parameters file
 jq --arg tag "$IMAGE_TAG" '.parameters.containerImageTag.value = $tag' \
-   infrastructure/container-apps.parameters.json > tmp.json && \
-   mv tmp.json infrastructure/container-apps.parameters.json
+   infra/container-apps.parameters.json > tmp.json && \
+   mv tmp.json infra/container-apps.parameters.json
 
 # Redeploy with updated image
 az deployment group create \
   --resource-group $RESOURCE_GROUP \
-  --template-file infrastructure/container-apps.bicep \
-  --parameters @infrastructure/container-apps.parameters.json
+  --template-file infra/container-apps.bicep \
+  --parameters @infra/container-apps.parameters.json
 ```
 
 ### Blue-Green Deployment Strategy

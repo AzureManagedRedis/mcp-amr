@@ -16,9 +16,9 @@ The complete stack includes:
 ## 📁 Files Structure
 
 ```
-infrastructure/
-├── main.bicep                     # Main orchestration template
-├── main.parameters.json          # Parameters for main template
+infra/
+├── resources.bicep                # Main orchestration template
+├── resources.parameters.json          # Parameters for main template
 ├── redis-cache.bicep             # Azure Managed Redis module
 ├── redis-cache.parameters.json   # Redis-specific parameters
 ├── deploy-complete-stack.sh       # Complete deployment script
@@ -59,7 +59,7 @@ This single command will:
 
 ## ⚙️ Configuration
 
-### Main Parameters (`main.parameters.json`)
+### Main Parameters (`resources.parameters.json`)
 
 | Parameter | Description | Default | Options |
 |-----------|-------------|---------|---------|
@@ -196,7 +196,7 @@ AzureDiagnostics
 # Quick dev deployment with minimal resources
 az deployment group create \
   --resource-group rg-redis-mcp-dev \
-  --template-file main.bicep \
+  --template-file resources.bicep \
   --parameters environment=dev redisEnterpriseSku=Balanced_B0 minReplicas=1
 ```
 
@@ -206,7 +206,7 @@ az deployment group create \
 # Production deployment with high availability
 az deployment group create \
   --resource-group rg-redis-mcp-prod \
-  --template-file main.bicep \
+  --template-file resources.bicep \
   --parameters environment=prod redisEnterpriseSku=Balanced_B3 minReplicas=2 maxReplicas=10
 ```
 
@@ -236,8 +236,8 @@ jobs:
         cd infrastructure
         az deployment group create \
           --resource-group rg-redis-mcp-prod \
-          --template-file main.bicep \
-          --parameters @main.parameters.json \
+          --template-file resources.bicep \
+          --parameters @resources.parameters.json \
           --parameters environment=prod imageTag=${{ github.sha }}
     
     - name: Build and Push Image
@@ -318,8 +318,8 @@ az containerapp update \
 # Scale Redis (requires downtime)
 az deployment group create \
   --resource-group rg-redis-mcp \
-  --template-file main.bicep \
-  --parameters @main.parameters.json redisEnterpriseSku=Balanced_B5
+  --template-file resources.bicep \
+  --parameters @resources.parameters.json redisEnterpriseSku=Balanced_B5
 ```
 
 ### Auto-scaling Configuration
@@ -357,7 +357,7 @@ When modifying the templates:
 
 1. **Validate templates** before committing:
    ```bash
-   az deployment group validate --template-file main.bicep --parameters @main.parameters.json --resource-group test-rg
+   az deployment group validate --template-file resources.bicep --parameters @resources.parameters.json --resource-group test-rg
    ```
 
 2. **Test deployments** in a development environment

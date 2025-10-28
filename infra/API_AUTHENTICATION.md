@@ -43,12 +43,14 @@ The default configuration includes three API keys:
 
 ### Option 1: Update Parameters File
 
-Edit `main.parameters.json`:
+Edit `resources.parameters.json`:
 
 ```json
 {
-  "mcpApiKeys": {
-    "value": "my-secret-key,another-key,production-key"
+  "parameters": {
+    "mcpApiKeys": {
+      "value": "your-api-key-1,your-api-key-2"
+    }
   }
 }
 ```
@@ -60,8 +62,8 @@ Pass custom API keys during deployment:
 ```bash
 az deployment group create \
   --resource-group "your-rg" \
-  --template-file "main.bicep" \
-  --parameters @"main.parameters.json" \
+  --template-file "resources.bicep" \
+  --parameters @"resources.parameters.json" \
   --parameters mcpApiKeys="custom-key-1,custom-key-2"
 ```
 

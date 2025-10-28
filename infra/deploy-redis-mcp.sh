@@ -4,9 +4,9 @@
 # This script deploys the entire Redis MCP server infrastructure using Bicep
 # 
 # USAGE: Run this script from the PROJECT ROOT directory
-#        ./infrastructure/deploy-redis-mcp.sh                              # Interactive mode
-#        ./infrastructure/deploy-redis-mcp.sh -g my-rg -l westus2 -s Balanced_B1  # Non-interactive mode
-#        ./infrastructure/deploy-redis-mcp.sh --help                       # Show help
+#        ./infra/deploy-redis-mcp.sh                              # Interactive mode
+#        ./infra/deploy-redis-mcp.sh -g my-rg -l westus2 -s Balanced_B1  # Non-interactive mode
+#        ./infra/deploy-redis-mcp.sh --help                       # Show help
 
 set -e  # Exit on error
 
@@ -18,8 +18,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-TEMPLATE_FILE="infrastructure/main.bicep"
-PARAMETERS_FILE="infrastructure/main.parameters.json"
+TEMPLATE_FILE="infra/resources.bicep"
+PARAMETERS_FILE="infra/resources.parameters.json"
 
 # Variables to be set by user input
 RESOURCE_GROUP=""
@@ -326,11 +326,11 @@ check_prerequisites() {
     print_step "Checking prerequisites..."
     
     # Check if running from project root
-    if [[ ! -f "Dockerfile" || ! -f "infrastructure/main.bicep" ]]; then
+    if [[ ! -f "Dockerfile" || ! -f "infra/resources.bicep" ]]; then
         print_error "Script must be run from the project root directory"
-        print_error "Expected files: Dockerfile, infrastructure/main.bicep"
+        print_error "Expected files: Dockerfile, infra/resources.bicep"
         print_info "Current directory: $(pwd)"
-        print_info "Usage: ./infrastructure/deploy-complete-stack.sh"
+        print_info "Usage: ./infra/deploy-redis-mcp.sh"
         exit 1
     fi
     

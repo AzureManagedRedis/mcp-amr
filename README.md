@@ -32,6 +32,9 @@ The Redis MCP Server is a **natural language interface** designed for agentic ap
   - [From GitHub](#from-github)
   - [Development Installation](#development-installation)
   - [With Docker](#with-docker)
+- [Deployment](#deployment)
+  - [Deploy to Azure with azd](#deploy-to-azure-with-azd)
+  - [Deploy to Azure with Shell Script](#deploy-to-azure-with-shell-script)
 - [Configuration](#configuration)
   - [Redis ACL](#redis-acl)
   - [Configuration via command line arguments](#configuration-via-command-line-arguments)
@@ -274,6 +277,42 @@ Finally, configure the client to create the container at start-up. An example fo
   }
 }
 ```
+
+## Deployment
+
+### Deploy to Azure with azd
+
+The fastest way to deploy the Redis MCP Server to Azure is using Azure Developer CLI (`azd`):
+
+```bash
+# Install azd (if not already installed)
+curl -fsSL https://aka.ms/install-azd.sh | bash
+
+# Login and deploy
+azd auth login
+azd up
+```
+
+This single command will:
+- ✅ Prompt for environment name, subscription, and location
+- ✅ Deploy Azure Managed Redis with RediSearch and RedisJSON
+- ✅ Deploy Container Apps with the MCP server
+- ✅ Build and push the container image
+- ✅ Configure authentication (NO-AUTH, API-KEY, or OAUTH)
+
+For detailed instructions, see [README.azd.md](./README.azd.md).
+
+### Deploy to Azure with Shell Script
+
+Alternatively, you can use the interactive deployment script:
+
+```bash
+./infra/deploy-redis-mcp.sh
+```
+
+This script provides full control over the deployment configuration including resource group, location, Redis SKU, and authentication method.
+
+For detailed deployment options, see [docs/AZURE_DEPLOYMENT.md](./docs/AZURE_DEPLOYMENT.md).
 
 To use the official [Redis MCP Docker](https://hub.docker.com/r/mcp/redis) image, just replace your image name (`mcp-redis` in the example above) with `mcp/redis`.
 
