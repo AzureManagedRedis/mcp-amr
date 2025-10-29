@@ -6,7 +6,7 @@ allowing you to store and retrieve data based on semantic similarity.
 
 import json
 import logging
-from typing import List, Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, List, Union
 
 from redis.exceptions import RedisError
 from redisvl.extensions.cache.llm import SemanticCache
@@ -131,22 +131,13 @@ async def semantic_cache_store(
     try:
         cache = _get_or_create_cache(cache_name, distance_threshold, ttl if ttl > 0 else None)
         
-        # Prepare metadata
-        metadata_dict = metadata or {}
-        if isinstance(metadata, str):
-            try:
-                metadata_dict = json.loads(metadata)
-            except json.JSONDecodeError:
-                _logger.warning(f"Failed to parse metadata as JSON, treating as string")
-                metadata_dict = {"raw": metadata}
-        
         # Store in cache using sync method wrapped in executor
         from src.common.connection import run_redis_command
         await run_redis_command(
             cache.store,
             prompt=prompt,
             response=response,
-            metadata=metadata_dict
+            metadata=metadata
         )
         
         _logger.info(f"Stored entry in cache '{cache_name}': {prompt[:50]}...")
@@ -175,7 +166,7 @@ async def semantic_cache_search(
     num_results: int = 5,
     distance_threshold: float = 0.4,
     return_metadata: bool = True
-) -> Union[str, List[Dict[str, Any]]]:
+) -> Union[List[Dict[str, Any]], str]:
     """Search the semantic cache using vector similarity to find relevant entries.
     
     This performs a semantic search, finding entries with similar meaning to your query,
@@ -190,8 +181,13 @@ async def semantic_cache_search(
         return_metadata (bool): Whether to include metadata in results (default True)
     
     Returns:
-        list|str: List of matching entries with response, similarity score, and metadata,
-                 or error message if search fails
+        list|str: On success, returns a list of matching entries, each containing:
+            - rank (int): Result ranking (1-based)
+            - response (str): The cached response
+            - similarity_score (float): Similarity score (0.0-1.0, higher is better)
+            - distance (float): Vector distance (0.0-1.0, lower is better)
+            - metadata (dict, optional): Associated metadata if return_metadata=True
+        On error, returns an error message string.
         
     Example:
         Search for laptops:
@@ -201,8 +197,16 @@ async def semantic_cache_search(
             num_results=3
         )
         
-        # Results will include entries about high-performance laptops,
-        # even if they don't mention "gaming" explicitly
+        # Returns: [
+        #   {
+        #     "rank": 1,
+        #     "response": "Dell XPS 17 - $2,999",
+        #     "similarity_score": 0.9234,
+        #     "distance": 0.0766,
+        #     "metadata": {"brand": "Dell", "category": "laptop"}
+        #   },
+        #   ...
+        # ]
     """
     try:
         cache = _get_or_create_cache(cache_name, distance_threshold, None)
@@ -221,11 +225,12 @@ async def semantic_cache_search(
         )
         
         if not results:
-            return f"No matching entries found in cache '{cache_name}' for query: {query}"
+            _logger.info(f"No results found in cache '{cache_name}' for query: {query[:50]}...")
+            return []
         
         _logger.info(f"Found {len(results)} results in cache '{cache_name}' for query: {query[:50]}...")
         
-        # Format results
+        # Format results as list of dictionaries
         formatted_results = []
         for i, result in enumerate(results, 1):
             similarity_score = 1.0 - float(result.get('vector_distance', 0))
@@ -250,20 +255,7 @@ async def semantic_cache_search(
             
             formatted_results.append(entry)
         
-        # Return formatted string for better readability
-        output = [
-            f"Search Results from '{cache_name}' (Query: '{query[:100]}{'...' if len(query) > 100 else ''}')",
-            f"Found {len(formatted_results)} matching entries:\n"
-        ]
-        
-        for entry in formatted_results:
-            output.append(f"\n{entry['rank']}. {entry['response']}")
-            output.append(f"   Similarity: {entry['similarity_score']:.4f} (distance: {entry['distance']:.4f})")
-            
-            if 'metadata' in entry and entry['metadata']:
-                output.append(f"   Metadata: {json.dumps(entry['metadata'], indent=6)}")
-        
-        return "\n".join(output)
+        return formatted_results
         
     except RedisError as e:
         error_msg = f"Redis error searching cache '{cache_name}': {str(e)}"
