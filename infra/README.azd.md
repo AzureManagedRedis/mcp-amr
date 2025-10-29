@@ -112,7 +112,7 @@ azd up
 azd env set MCP_AUTH_METHOD OAUTH
 azd env set OAUTH_TENANT_ID "your-tenant-id"
 azd env set OAUTH_CLIENT_ID "your-client-id"
-azd env set OAUTH_REQUIRED_SCOPES "api://your-app/.default"
+azd env set OAUTH_REQUIRED_SCOPES "MCP.Write,MCP.Read"
 azd up
 ```
 
@@ -124,18 +124,12 @@ azd up
 azd env get-values
 
 # Show resource group in Azure Portal
-az group show --name rg-$(azd env get-value AZURE_ENV_NAME)
+az group show --name rg-mcp-$(azd env get-value AZURE_ENV_NAME)
 ```
 
-### Update Application Code
+### Update Infrastructure/Application
 ```bash
 # After making code changes, redeploy
-azd deploy
-```
-
-### Re-provision Infrastructure
-```bash
-# Update infrastructure only
 azd provision
 ```
 
@@ -150,18 +144,6 @@ az containerapp logs show \
   --name "$CONTAINER_APP_NAME" \
   --resource-group "$RESOURCE_GROUP" \
   --follow
-```
-
-### Scale Application
-```bash
-CONTAINER_APP_NAME=$(azd env get-value AZURE_CONTAINER_APP_NAME)
-RESOURCE_GROUP=$(azd env get-value AZURE_RESOURCE_GROUP)
-
-az containerapp update \
-  --name "$CONTAINER_APP_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --min-replicas 3 \
-  --max-replicas 10
 ```
 
 ## 🌍 Multiple Environments
@@ -243,54 +225,6 @@ az group show --name "$RESOURCE_GROUP"
 azd down --force --purge
 azd up
 ```
-
-## 📚 CI/CD Integration
-
-### GitHub Actions
-
-The repository includes a GitHub Actions workflow (`.github/workflows/azure-dev.yml`).
-
-**Setup**:
-1. Fork the repository
-2. Set repository secrets/variables:
-   - `AZURE_CLIENT_ID`
-   - `AZURE_TENANT_ID`
-   - `AZURE_SUBSCRIPTION_ID`
-   - `AZURE_ENV_NAME`
-   - `AZURE_LOCATION`
-3. Push to `main` branch to trigger deployment
-
-### Azure DevOps
-
-The repository includes an Azure DevOps pipeline (`.azdo/pipeline.yml`).
-
-**Setup**:
-1. Create service connection in Azure DevOps
-2. Set pipeline variables
-3. Run pipeline
-
-## 🆚 azd vs Shell Script
-
-| Feature | `azd up` | Shell Script |
-|---------|----------|--------------|
-| Setup | Single command | Multiple commands |
-| Environment Management | Built-in multi-env | Manual |
-| CI/CD Integration | Native GitHub/ADO | Custom setup |
-| Updates | `azd deploy` | Manual rebuild |
-| Cleanup | `azd down` | Manual deletion |
-| Learning Curve | Moderate | Low |
-| Flexibility | Structured | Very flexible |
-
-**Choose `azd` if you want**:
-- ✅ Quick, standardized deployments
-- ✅ Multiple environments (dev/staging/prod)
-- ✅ Built-in CI/CD integration
-- ✅ Azure best practices out of the box
-
-**Choose shell script if you want**:
-- ✅ Maximum control and customization
-- ✅ No additional tools to learn
-- ✅ Custom deployment workflows
 
 ## 📖 Additional Resources
 
