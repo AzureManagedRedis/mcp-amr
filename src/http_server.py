@@ -279,6 +279,24 @@ def run_server(host: str = "0.0.0.0", port: int = 8000):
         host: Host to bind to (default: 0.0.0.0 for container deployment)
         port: Port to bind to (default: 8000)
     """
+    # Pre-load semantic cache embedding model and initialize Redis connection at startup
+    # This prevents delays/timeouts when the first semantic cache tool is called
+    try:
+        logger.info("Pre-loading semantic cache (model + Redis connection)...")
+        from src.tools.semantic_cache import _get_vectorizer, _get_or_create_cache
+        
+        # Load embedding model
+        vectorizer = _get_vectorizer()
+        logger.info(f"Embedding model loaded (dims={vectorizer.dims})")
+        
+        # Initialize a dummy cache to trigger Redis connection and Entra ID token manager
+        # This ensures the token manager starts during server initialization, not during first tool call
+        _get_or_create_cache("_warmup_cache")
+        logger.info("Semantic cache pre-loaded successfully (model + Redis connection ready)")
+    except Exception as e:
+        # Log but don't fail startup - the model will be loaded on first use if this fails
+        logger.warning(f"Failed to pre-load semantic cache (will load on first use): {e}")
+    
     # Log registered tools - need to run async function
     tools = asyncio.run(get_tools_list())
     

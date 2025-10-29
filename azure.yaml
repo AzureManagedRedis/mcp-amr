@@ -4,90 +4,72 @@ name: mcp-redis
 metadata:
   template: mcp-redis@0.0.1-beta
 
-# Define service for azd deploy to work
-services:
-  redis-mcp:
-    project: .
-    language: python
-    host: containerapp
-
 hooks:
-  postdeploy:
+  postprovision:
     posix:
       shell: sh
       run: |
-        # Build and push container image using ACR
-        echo "Building and pushing container image..."
-        IMAGE_TAG=$(date +%Y%m%d-%H%M%S)
-        if git rev-parse --short HEAD &> /dev/null; then
-          GIT_HASH=$(git rev-parse --short HEAD)
-          IMAGE_TAG="${IMAGE_TAG}-${GIT_HASH}"
-        fi
+        # Generate image tag with timestamp and git hash
+        IMAGE_TAG="$(date +%Y%m%d-%H%M%S)"
+        git rev-parse --short HEAD &> /dev/null && IMAGE_TAG="${IMAGE_TAG}-$(git rev-parse --short HEAD)"
         
+        # Get Azure resource info
         ACR_NAME=$(azd env get-value AZURE_CONTAINER_REGISTRY_NAME)
         CONTAINER_APP_NAME=$(azd env get-value AZURE_CONTAINER_APP_NAME)
         RESOURCE_GROUP=$(azd env get-value AZURE_RESOURCE_GROUP)
         
-        echo "Building image with tag: ${IMAGE_TAG}"
-        az acr build \
-          --registry "$ACR_NAME" \
+        # Build and push to ACR
+        echo "Building and pushing redis-mcp-server:${IMAGE_TAG}..."
+        az acr build --registry "$ACR_NAME" \
           --image "redis-mcp-server:${IMAGE_TAG}" \
           --image "redis-mcp-server:latest" \
-          --platform linux/amd64 \
-          . \
-          --output table
+          --platform linux/amd64 . --output table
         
-        # Update container app with new image
-        echo "Updating Container App with new image..."
+        # Update Container App
+        echo "Updating Container App..."
         ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
-        az containerapp update \
-          --name "$CONTAINER_APP_NAME" \
-          --resource-group "$RESOURCE_GROUP" \
-          --image "${ACR_LOGIN_SERVER}/redis-mcp-server:${IMAGE_TAG}" \
-          --output table
+        az containerapp update --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" \
+          --image "${ACR_LOGIN_SERVER}/redis-mcp-server:${IMAGE_TAG}" --output table
         
-        echo "✅ Deployment complete! Image: redis-mcp-server:${IMAGE_TAG}"
-        echo "📍 MCP Server URL: https://$(azd env get-value AZURE_CONTAINER_APP_FQDN)/message"
-        echo "🔍 Health check: https://$(azd env get-value AZURE_CONTAINER_APP_FQDN)/health"
+        # Show deployment info
+        FQDN=$(azd env get-value AZURE_CONTAINER_APP_FQDN)
+        echo "✅ Deployed: redis-mcp-server:${IMAGE_TAG}"
+        echo "📍 MCP Server: https://${FQDN}/message"
+        echo "🔍 Health check: https://${FQDN}/health"
       continueOnError: false
       interactive: true
     
     windows:
       shell: pwsh
       run: |
-        # Build and push container image using ACR
-        Write-Host "Building and pushing container image..."
+        # Generate image tag with timestamp and git hash
         $IMAGE_TAG = Get-Date -Format "yyyyMMdd-HHmmss"
         if (git rev-parse --short HEAD 2>$null) {
-          $GIT_HASH = git rev-parse --short HEAD
-          $IMAGE_TAG = "${IMAGE_TAG}-${GIT_HASH}"
+          $IMAGE_TAG = "${IMAGE_TAG}-$(git rev-parse --short HEAD)"
         }
         
+        # Get Azure resource info
         $ACR_NAME = azd env get-value AZURE_CONTAINER_REGISTRY_NAME
         $CONTAINER_APP_NAME = azd env get-value AZURE_CONTAINER_APP_NAME
         $RESOURCE_GROUP = azd env get-value AZURE_RESOURCE_GROUP
         
-        Write-Host "Building image with tag: ${IMAGE_TAG}"
-        az acr build `
-          --registry "$ACR_NAME" `
+        # Build and push to ACR
+        Write-Host "Building and pushing redis-mcp-server:${IMAGE_TAG}..."
+        az acr build --registry "$ACR_NAME" `
           --image "redis-mcp-server:${IMAGE_TAG}" `
           --image "redis-mcp-server:latest" `
-          --platform linux/amd64 `
-          . `
-          --output table
+          --platform linux/amd64 . --output table
         
-        # Update container app with new image
-        Write-Host "Updating Container App with new image..."
+        # Update Container App
+        Write-Host "Updating Container App..."
         $ACR_LOGIN_SERVER = az acr show --name "$ACR_NAME" --query loginServer -o tsv
-        az containerapp update `
-          --name "$CONTAINER_APP_NAME" `
-          --resource-group "$RESOURCE_GROUP" `
-          --image "${ACR_LOGIN_SERVER}/redis-mcp-server:${IMAGE_TAG}" `
-          --output table
+        az containerapp update --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" `
+          --image "${ACR_LOGIN_SERVER}/redis-mcp-server:${IMAGE_TAG}" --output table
         
-        Write-Host "✅ Deployment complete! Image: redis-mcp-server:${IMAGE_TAG}"
+        # Show deployment info
         $FQDN = azd env get-value AZURE_CONTAINER_APP_FQDN
-        Write-Host "📍 MCP Server URL: https://${FQDN}/message"
+        Write-Host "✅ Deployed: redis-mcp-server:${IMAGE_TAG}"
+        Write-Host "📍 MCP Server: https://${FQDN}/message"
         Write-Host "🔍 Health check: https://${FQDN}/health"
       continueOnError: false
       interactive: true

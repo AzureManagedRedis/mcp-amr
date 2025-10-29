@@ -13,7 +13,16 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 
 # Install dependencies (no dev dependencies)
-RUN uv sync --locked --no-dev --no-editable
+# Install all dependencies using CPU-only PyTorch index
+# Skip uv sync since uv.lock contains CUDA PyTorch
+RUN uv pip install --system --no-cache \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    -e . && \
+    # Clean up unnecessary files to reduce image size (system install, no .venv)
+    find /usr/local/lib/python3.14 -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
+    find /usr/local/lib/python3.14 -type f -name "*.pyc" -delete 2>/dev/null || true && \
+    find /usr/local/lib/python3.14 -type f -name "*.pyo" -delete 2>/dev/null || true && \
+    rm -rf /root/.cache/uv /app/.cache/uv
 
 # Copy the rest of the application files
 COPY . /app
@@ -43,4 +52,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Default command - run HTTP server for remote MCP access
 # This runs the MCP server with HTTP/SSE transport instead of stdio
 ENV PYTHONPATH=/app
-CMD ["/app/.venv/bin/python", "-m", "src.http_server"]
+CMD ["python", "-m", "src.http_server"]

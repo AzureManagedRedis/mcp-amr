@@ -129,10 +129,11 @@ async def semantic_cache_store(
         )
     """
     try:
-        cache = _get_or_create_cache(cache_name, distance_threshold, ttl if ttl > 0 else None)
+        # Get or create cache in executor to avoid blocking event loop during token manager initialization
+        from src.common.connection import run_redis_command
+        cache = await run_redis_command(_get_or_create_cache, cache_name, distance_threshold, ttl if ttl > 0 else None)
         
         # Store in cache using sync method wrapped in executor
-        from src.common.connection import run_redis_command
         await run_redis_command(
             cache.store,
             prompt=prompt,
@@ -209,10 +210,11 @@ async def semantic_cache_search(
         # ]
     """
     try:
-        cache = _get_or_create_cache(cache_name, distance_threshold, None)
+        # Get or create cache in executor to avoid blocking event loop during token manager initialization
+        from src.common.connection import run_redis_command
+        cache = await run_redis_command(_get_or_create_cache, cache_name, distance_threshold, None)
         
         # Perform semantic search using sync method wrapped in executor
-        from src.common.connection import run_redis_command
         return_fields = ["response", "vector_distance"]
         if return_metadata:
             return_fields.append("metadata")
@@ -279,10 +281,11 @@ async def semantic_cache_clear(cache_name: str, distance_threshold: float = 0.4)
         str: Success confirmation or error message
     """
     try:
-        cache = _get_or_create_cache(cache_name, distance_threshold, None)
+        # Get or create cache in executor to avoid blocking event loop during token manager initialization
+        from src.common.connection import run_redis_command
+        cache = await run_redis_command(_get_or_create_cache, cache_name, distance_threshold, None)
         
         # Clear cache using sync method wrapped in executor
-        from src.common.connection import run_redis_command
         await run_redis_command(cache.clear)
         
         _logger.info(f"Cleared cache: {cache_name}")
@@ -310,10 +313,11 @@ async def semantic_cache_info(cache_name: str, distance_threshold: float = 0.4) 
         str: Cache statistics and configuration
     """
     try:
-        cache = _get_or_create_cache(cache_name, distance_threshold, None)
+        # Get or create cache in executor to avoid blocking event loop during token manager initialization
+        from src.common.connection import run_redis_command
+        cache = await run_redis_command(_get_or_create_cache, cache_name, distance_threshold, None)
         
         # Get index info using sync method wrapped in executor
-        from src.common.connection import run_redis_command
         info = await run_redis_command(cache.index.info)
         
         output = [

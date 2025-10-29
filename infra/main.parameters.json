@@ -9,7 +9,7 @@
       "value": "${AZURE_LOCATION}"
     },
     "redisEnterpriseSku": {
-      "value": "${REDIS_ENTERPRISE_SKU=Balanced_B1}"
+      "value": "${REDIS_ENTERPRISE_SKU=Balanced_B5}"
     },
     "enableRediSearch": {
       "value": "${ENABLE_REDIS_SEARCH=true}"

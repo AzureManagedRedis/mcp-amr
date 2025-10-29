@@ -15,7 +15,24 @@ class RedisMCPServer:
         self._logger = logging.getLogger(__name__)
         self._logger.info("Starting the Redis MCP Server")
 
+    def _preload_semantic_cache_model(self):
+        """Pre-load the semantic cache embedding model at startup.
+        
+        This prevents timeout issues when the first semantic cache tool is called,
+        as loading the model can take 10-30 seconds on cold start.
+        """
+        try:
+            self._logger.info("Pre-loading semantic cache embedding model...")
+            from src.tools.semantic_cache import _get_vectorizer
+            vectorizer = _get_vectorizer()
+            self._logger.info(f"Semantic cache model pre-loaded successfully (dims={vectorizer.dims})")
+        except Exception as e:
+            # Log but don't fail startup - the model will be loaded on first use if this fails
+            self._logger.warning(f"Failed to pre-load semantic cache model (will load on first use): {e}")
+
     def run(self):
+        # Pre-load model before starting the MCP server
+        self._preload_semantic_cache_model()
         mcp.run()
 
 
@@ -130,4 +147,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    cli()
