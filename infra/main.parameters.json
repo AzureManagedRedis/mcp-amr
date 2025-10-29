@@ -30,10 +30,10 @@
       "value": "${MAX_REPLICAS=5}"
     },
     "cpu": {
-      "value": "${CPU=0.25}"
+      "value": "${CPU=2}"
     },
     "memory": {
-      "value": "${MEMORY=0.5Gi}"
+      "value": "${MEMORY=4Gi}"
     },
     "logLevel": {
       "value": "${LOG_LEVEL=INFO}"

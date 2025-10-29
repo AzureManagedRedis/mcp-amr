@@ -28,9 +28,11 @@ def _get_vectorizer() -> HFTextVectorizer:
     """Get or create the HuggingFace vectorizer instance.
     
     The model is loaded once and reused across all cache instances for efficiency.
-    Using 'redis/langcache-embed-v1' which is specifically optimized for semantic
-    caching - it provides excellent accuracy with faster inference and lower memory
-    usage compared to general-purpose models.
+    Using 'sentence-transformers/all-MiniLM-L6-v2' which is:
+    - Fast and lightweight (22MB, 384 dimensions)
+    - Widely compatible with no special dependencies
+    - Excellent for semantic similarity and caching use cases
+    - Well-tested and reliable
     
     Returns:
         HFTextVectorizer: The vectorizer instance
@@ -38,10 +40,10 @@ def _get_vectorizer() -> HFTextVectorizer:
     global _vectorizer
     
     if _vectorizer is None:
-        _logger.info("Loading Redis semantic cache embedding model (this may take a moment on first use)...")
+        _logger.info("Loading semantic cache embedding model (this may take a moment on first use)...")
         try:
             _vectorizer = HFTextVectorizer(
-                model="redis/langcache-embed-v1"
+                model="sentence-transformers/all-MiniLM-L6-v2"
             )
             _logger.info(f"Embedding model loaded successfully (dims={_vectorizer.dims})")
         except Exception as e:
