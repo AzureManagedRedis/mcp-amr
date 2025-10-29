@@ -124,7 +124,7 @@ async def semantic_cache_store(
     cache_name: str,
     prompt: str,
     response: str,
-    metadata: Optional[Dict[str, Any]] = None,
+    metadata: Dict[str, Any] = {},
     distance_threshold: float = 0.4,
     ttl: int = 0
 ) -> str:
@@ -160,12 +160,15 @@ async def semantic_cache_store(
         from src.common.connection import run_redis_command
         cache = await run_redis_command(_get_or_create_cache, cache_name, distance_threshold, ttl if ttl > 0 else None)
         
+        # Pass None for metadata if empty dictionary
+        metadata_to_store = metadata if metadata else None
+        
         # Store in cache using sync method wrapped in executor
         await run_redis_command(
             cache.store,
             prompt=prompt,
             response=response,
-            metadata=metadata
+            metadata=metadata_to_store
         )
         
         _logger.info(f"Stored entry in cache '{cache_name}': {prompt[:50]}...")
