@@ -90,6 +90,7 @@ var identityName = '${baseName}-identity-${environment}'
 var containerAppEnvName = '${baseName}-env-${environment}'
 var containerAppName = '${baseName}-app-${environment}'
 var logAnalyticsName = '${baseName}-logs-${environment}'
+var openAIServiceName = '${baseName}-openai-${environment}-${uniqueSuffix}'
 
 // 1. Create User-Assigned Managed Identity
 module managedIdentityModule 'managed-identity.bicep' = {
@@ -140,7 +141,18 @@ module acrModule 'container-registry.bicep' = {
   }
 }
 
-// 5. Create Container Apps and Environment
+// 5. Create Azure OpenAI service
+module openAIModule 'azure-openai.bicep' = {
+  name: 'azure-openai-deployment'
+  params: {
+    openAIServiceName: openAIServiceName
+    location: location
+    managedIdentityPrincipalId: managedIdentityModule.outputs.managedIdentityPrincipalId
+    tags: tags
+  }
+}
+
+// 6. Create Container Apps and Environment
 module containerAppsModule 'container-apps.bicep' = {
   name: 'container-apps-deployment'
   params: {
@@ -155,6 +167,8 @@ module containerAppsModule 'container-apps.bicep' = {
     usePlaceholderImage: true  // Use placeholder during initial deployment
     redisHostName: redisModule.outputs.redisHostName
     redisPort: redisModule.outputs.databasePort
+    azureOpenAIEndpoint: openAIModule.outputs.openAIEndpoint
+    azureOpenAIDeploymentName: openAIModule.outputs.embeddingDeploymentName
     minReplicas: minReplicas
     maxReplicas: maxReplicas
     cpu: cpu
@@ -203,6 +217,15 @@ output containerAppName string = containerAppsModule.outputs.containerAppName
 
 @description('Container App FQDN')
 output containerAppFqdn string = containerAppsModule.outputs.containerAppFqdn
+
+@description('Azure OpenAI service name')
+output openAIServiceName string = openAIModule.outputs.openAIServiceName
+
+@description('Azure OpenAI service endpoint')
+output openAIEndpoint string = openAIModule.outputs.openAIEndpoint
+
+@description('Azure OpenAI embedding deployment name')
+output openAIEmbeddingDeploymentName string = openAIModule.outputs.embeddingDeploymentName
 
 @description('Instructions for building and pushing the container image')
 output buildInstructions string = acrModule.outputs.buildInstructions

@@ -84,6 +84,12 @@ param oauthClientId string = ''
 @description('OAuth Required Scopes (comma-separated) - Optional for OAUTH method')
 param oauthRequiredScopes string = ''
 
+@description('Azure OpenAI service endpoint')
+param azureOpenAIEndpoint string = ''
+
+@description('Azure OpenAI deployment name for embeddings')
+param azureOpenAIDeploymentName string = ''
+
 @description('Tags to apply to all resources')
 param tags object = {}
 
@@ -185,6 +191,18 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
             {
               name: 'MCP_OAUTH_REQUIRED_SCOPES'
               value: oauthRequiredScopes
+            }
+            {
+              name: 'AZURE_OPENAI_ENDPOINT'
+              value: azureOpenAIEndpoint
+            }
+            {
+              name: 'AZURE_OPENAI_DEPLOYMENT_NAME'
+              value: azureOpenAIDeploymentName
+            }
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: managedIdentityClientId
             }
           ]
           resources: {

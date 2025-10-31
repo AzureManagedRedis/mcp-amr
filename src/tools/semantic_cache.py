@@ -6,48 +6,75 @@ allowing you to store and retrieve data based on semantic similarity.
 
 import json
 import logging
+import os
 from typing import Dict, Any, Optional, List, Union
 
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
 from redis.exceptions import RedisError
 from redisvl.extensions.cache.llm import SemanticCache
-from redisvl.utils.vectorize.text.huggingface import HFTextVectorizer
 
 from src.common.connection import RedisConnectionManager
 from src.common.server import mcp
+from src.tools.azure_openai_vectorizer import AzureADOpenAITextVectorizer
 
 # Logger
 _logger = logging.getLogger(__name__)
+
+
 
 # Cache instances storage
 _cache_instances: Dict[str, SemanticCache] = {}
 
 # Pre-load the embedding model at module import time to avoid delays during first use
-_vectorizer: Optional[HFTextVectorizer] = None
+_vectorizer: Optional[AzureADOpenAITextVectorizer] = None
 
-def _get_vectorizer() -> HFTextVectorizer:
-    """Get or create the HuggingFace vectorizer instance.
+def _get_vectorizer() -> AzureADOpenAITextVectorizer:
+    """Get or create the Azure OpenAI vectorizer instance.
     
     The model is loaded once and reused across all cache instances for efficiency.
-    Using 'sentence-transformers/all-MiniLM-L6-v2' which is:
-    - Fast and lightweight (22MB, 384 dimensions)
-    - Widely compatible with no special dependencies
-    - Excellent for semantic similarity and caching use cases
-    - Well-tested and reliable
+    Using Azure OpenAI 'text-embedding-ada-002' which provides:
+    - High-quality embeddings (1536 dimensions)
+    - Enterprise-grade security with Azure AD authentication
+    - Scalable cloud-based processing
+    - Consistent availability and performance
     
     Returns:
-        HFTextVectorizer: The vectorizer instance
+        AzureADOpenAITextVectorizer: The custom vectorizer instance with Azure AD support
     """
     global _vectorizer
     
     if _vectorizer is None:
-        _logger.info("Loading semantic cache embedding model (this may take a moment on first use)...")
+        _logger.info("Initializing Azure OpenAI semantic cache embedding model...")
         try:
-            _vectorizer = HFTextVectorizer(
-                model="sentence-transformers/all-MiniLM-L6-v2"
+            # Get Azure OpenAI endpoint from environment variable
+            azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+            if not azure_endpoint:
+                raise ValueError("AZURE_OPENAI_ENDPOINT environment variable is required")
+            
+            # Create Azure AD credential for authentication
+            # Use ManagedIdentityCredential with specific client ID if available (best practice for Container Apps)
+            # Otherwise fallback to DefaultAzureCredential for local development
+            client_id = os.getenv("AZURE_CLIENT_ID")
+            if client_id:
+                _logger.info(f"Using ManagedIdentityCredential with client ID: {client_id}")
+                credential = ManagedIdentityCredential(client_id=client_id)
+            else:
+                _logger.info("Using DefaultAzureCredential for local development")
+                credential = DefaultAzureCredential()
+            
+            # Use our custom vectorizer that properly supports Azure AD authentication
+            # Following the same api_config pattern as AzureOpenAITextVectorizer
+            _vectorizer = AzureADOpenAITextVectorizer(
+                model= os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "text-embedding-ada-002"),
+                api_config={
+                    "azure_endpoint": azure_endpoint,
+                    "api_version": "2024-10-21",
+                    "credential": credential
+                }
             )
-            _logger.info(f"Embedding model loaded successfully (dims={_vectorizer.dims})")
+            _logger.info(f"Azure OpenAI embedding model initialized successfully (dims={_vectorizer.dims})")
         except Exception as e:
-            _logger.error(f"Failed to load embedding model: {e}")
+            _logger.error(f"Failed to initialize Azure OpenAI embedding model: {e}")
             raise
     
     return _vectorizer

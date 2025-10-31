@@ -131,4 +131,7 @@ output AZURE_CONTAINER_APP_NAME string = resources.outputs.containerAppName
 output AZURE_CONTAINER_APP_FQDN string = resources.outputs.containerAppFqdn
 output REDIS_HOST_NAME string = resources.outputs.redisHostName
 output REDIS_PORT int = resources.outputs.redisDatabasePort
+output AZURE_OPENAI_SERVICE_NAME string = resources.outputs.openAIServiceName
+output AZURE_OPENAI_ENDPOINT string = resources.outputs.openAIEndpoint
+output AZURE_OPENAI_DEPLOYMENT_NAME string = resources.outputs.openAIEmbeddingDeploymentName
 output MCP_SERVER_URL string = 'https://${resources.outputs.containerAppFqdn}/message'
