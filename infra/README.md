@@ -44,9 +44,10 @@ That's it! `azd up` will:
 1. ✅ Prompt you for environment name, subscription, and location
 2. ✅ Create resource group
 3. ✅ Deploy all Azure resources (Redis, Container Apps, etc.)
-4. ✅ Build and push container image
-5. ✅ Deploy the MCP server application
-6. ✅ Output all connection details
+4. ✅ **Auto-generate API keys** (if using API-KEY auth method)
+5. ✅ Build and push container image
+6. ✅ Deploy the MCP server application
+7. ✅ Output all connection details and **display generated API keys**
 
 ## 📋 Configuration
 
@@ -102,6 +103,34 @@ azd up
 
 ### API Key Authentication
 ```bash
+# Option 1: Auto-generate API keys (recommended)
+azd env set MCP_AUTH_METHOD API-KEY
+azd up
+```
+
+**Sample Output with Auto-Generated Keys:**
+```
+🔐 Generating API keys for MCP authentication...
+
+🎉 API Keys generated successfully!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 Your MCP Server API Keys (save these securely):
+
+   🔑 API Key 1: K8vX9nM2pL5wR3yT7uA6sD4fG1hJ9bN0cV
+   🔑 API Key 2: P9mQ2xB7vC5nR8yU3wA6sF4lG1kJ0dN7cZ
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 Usage examples:
+   • HTTP Header:  X-API-Key: K8vX9nM2pL5wR3yT7uA6sD4fG1hJ9bN0cV
+   • Query Parameter: ?api_key=K8vX9nM2pL5wR3yT7uA6sD4fG1hJ9bN0cV
+
+⚠️  Important: Store these keys securely. They will not be shown again.
+   You can retrieve them later with: azd env get-value MCP_API_KEYS
+```
+
+**Option 2: Provide your own API keys**
+```bash
 azd env set MCP_AUTH_METHOD API-KEY
 azd env set MCP_API_KEYS "$(openssl rand -base64 32),$(openssl rand -base64 32)"
 azd up
@@ -125,6 +154,25 @@ azd env get-values
 
 # Show resource group in Azure Portal
 az group show --name rg-mcp-$(azd env get-value AZURE_ENV_NAME)
+```
+
+### View Generated API Keys
+```bash
+# View API keys (if using API-KEY authentication)
+azd env get-value MCP_API_KEYS
+
+# View authentication method
+azd env get-value MCP_AUTH_METHOD
+
+# Or use the helper script
+./scripts/api-keys.sh show
+```
+
+### Regenerate API Keys
+```bash
+# Generate new API keys and update deployment
+./scripts/api-keys.sh generate
+azd provision
 ```
 
 ### Update Infrastructure/Application
@@ -182,11 +230,12 @@ azd env select prod
 MCP_URL=$(azd env get-value MCP_SERVER_URL)
 CONTAINER_APP_FQDN=$(azd env get-value AZURE_CONTAINER_APP_FQDN)
 
-# Test health endpoint
+# Test health endpoint (NO-AUTH)
 curl https://${CONTAINER_APP_FQDN}/health
 
 # Test with API key (if using API-KEY auth)
-curl -H "X-API-Key: your-api-key" https://${CONTAINER_APP_FQDN}/health
+API_KEY=$(azd env get-value MCP_API_KEYS | cut -d',' -f1)
+curl -H "X-API-Key: $API_KEY" https://${CONTAINER_APP_FQDN}/health
 
 # Test with OAuth (if using OAUTH auth)
 curl -H "Authorization: Bearer your-jwt-token" https://${CONTAINER_APP_FQDN}/health

@@ -63,7 +63,7 @@ param logLevel string = 'INFO'
 ])
 param mcpAuthMethod string = 'NO-AUTH'
 
-@description('MCP API keys (comma-separated list) - Required when mcpAuthMethod is API-KEY')
+@description('MCP API keys (comma-separated list) - Auto-generated when mcpAuthMethod is API-KEY and this is empty')
 @secure()
 param mcpApiKeys string = ''
 
@@ -135,3 +135,6 @@ output AZURE_OPENAI_SERVICE_NAME string = resources.outputs.openAIServiceName
 output AZURE_OPENAI_ENDPOINT string = resources.outputs.openAIEndpoint
 output AZURE_OPENAI_DEPLOYMENT_NAME string = resources.outputs.openAIEmbeddingDeploymentName
 output MCP_SERVER_URL string = 'https://${resources.outputs.containerAppFqdn}/message'
+
+// Output authentication method for reference
+output MCP_AUTH_METHOD string = mcpAuthMethod

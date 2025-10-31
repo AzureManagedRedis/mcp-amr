@@ -5,6 +5,108 @@ metadata:
   template: mcp-redis@0.0.1-beta
 
 hooks:
+  preprovision:
+    posix:
+      shell: sh
+      run: |
+        # Handle API Key generation for API-KEY authentication
+        # This runs BEFORE provisioning so keys are available as Bicep parameters
+        AUTH_METHOD=$(azd env get-value MCP_AUTH_METHOD 2>/dev/null || echo "NO-AUTH")
+        
+        if [ "$AUTH_METHOD" = "API-KEY" ]; then
+            # Check if API keys were already provided
+            # Check exit code to determine if key exists
+            if azd env get-value MCP_API_KEYS >/dev/null 2>&1; then
+                EXISTING_KEYS=$(azd env get-value MCP_API_KEYS 2>/dev/null)
+            else
+                EXISTING_KEYS=""
+            fi
+            
+            if [ -z "$EXISTING_KEYS" ]; then
+                echo "🔐 Generating API keys for MCP authentication..."
+                
+                # Generate two secure API keys
+                API_KEY_1=$(openssl rand -base64 32)
+                API_KEY_2=$(openssl rand -base64 32)
+                
+                # Set the generated keys in the environment
+                azd env set MCP_API_KEYS "${API_KEY_1},${API_KEY_2}"
+                
+                echo ""
+                echo "🎉 API Keys generated successfully!"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "📋 Your MCP Server API Keys (save these securely):"
+                echo ""
+                echo "   🔑 API Key 1: ${API_KEY_1}"
+                echo "   🔑 API Key 2: ${API_KEY_2}"
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                echo "💡 Usage examples:"
+                echo "   • HTTP Header:  X-API-Key: ${API_KEY_1}"
+                echo "   • Query Parameter: ?api_key=${API_KEY_1}"
+                echo ""
+                echo "⚠️  Important: Store these keys securely. They will not be shown again."
+                echo "   You can retrieve them later with: azd env get-value MCP_API_KEYS"
+                echo ""
+            else
+                echo "✅ Using existing API keys from environment"
+            fi
+        fi
+      continueOnError: false
+      interactive: true
+    
+    windows:
+      shell: pwsh
+      run: |
+        # Handle API Key generation for API-KEY authentication
+        # This runs BEFORE provisioning so keys are available as Bicep parameters
+        $AUTH_METHOD = azd env get-value MCP_AUTH_METHOD 2>$null
+        if (-not $AUTH_METHOD) { $AUTH_METHOD = "NO-AUTH" }
+        
+        if ($AUTH_METHOD -eq "API-KEY") {
+            # Check if API keys were already provided
+            # Check exit code to determine if key exists
+            $EXISTING_KEYS = ""
+            azd env get-value MCP_API_KEYS >$null 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $EXISTING_KEYS = azd env get-value MCP_API_KEYS 2>$null
+            }
+            
+            if (-not $EXISTING_KEYS -or $EXISTING_KEYS -eq "") {
+                Write-Host "🔐 Generating API keys for MCP authentication..."
+                
+                # Generate two secure API keys using .NET cryptography
+                $API_KEY_1 = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
+                $API_KEY_2 = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
+                
+                # Set the generated keys in the environment
+                azd env set MCP_API_KEYS "${API_KEY_1},${API_KEY_2}"
+                
+                Write-Host ""
+                Write-Host "🎉 API Keys generated successfully!"
+                Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                Write-Host "📋 Your MCP Server API Keys (save these securely):"
+                Write-Host ""
+                Write-Host "   🔑 API Key 1: ${API_KEY_1}"
+                Write-Host "   🔑 API Key 2: ${API_KEY_2}"
+                Write-Host ""
+                Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                Write-Host ""
+                Write-Host "💡 Usage examples:"
+                Write-Host "   • HTTP Header:  X-API-Key: ${API_KEY_1}"
+                Write-Host "   • Query Parameter: ?api_key=${API_KEY_1}"
+                Write-Host ""
+                Write-Host "⚠️  Important: Store these keys securely. They will not be shown again."
+                Write-Host "   You can retrieve them later with: azd env get-value MCP_API_KEYS"
+                Write-Host ""
+            } else {
+                Write-Host "✅ Using existing API keys from environment"
+            }
+        }
+      continueOnError: false
+      interactive: true
+
   postprovision:
     posix:
       shell: sh
