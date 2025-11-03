@@ -1,6 +1,6 @@
 # Deploying with Azure Developer CLI (azd)
 
-This guide shows you how to deploy the Redis MCP Server using Azure Developer CLI (`azd`).
+This guide shows you how to deploy the remote MCP Server for Azure Managed Redis using Azure Developer CLI (`azd`).
 
 ## 🚀 Quick Start
 
@@ -43,7 +43,7 @@ azd up
 That's it! `azd up` will:
 1. ✅ Prompt you for environment name, subscription, and location
 2. ✅ Create resource group
-3. ✅ Deploy all Azure resources (Redis, Container Apps, etc.)
+3. ✅ Deploy all Azure resources (Azure Managed Redis instance, remote MCP server hosted on Container Apps, etc.)
 4. ✅ **Auto-generate API keys** (if using API-KEY auth method)
 5. ✅ Build and push container image
 6. ✅ Deploy the MCP server application
@@ -101,9 +101,9 @@ azd env set MCP_AUTH_METHOD NO-AUTH
 azd up
 ```
 
-### API Key Authentication
+### API Key Authentication (RECOMMENDED)
 ```bash
-# Option 1: Auto-generate API keys (recommended)
+# Option 1: Auto-generate API keys (Recommended)
 azd env set MCP_AUTH_METHOD API-KEY
 azd up
 ```
@@ -145,17 +145,6 @@ azd env set OAUTH_REQUIRED_SCOPES "MCP.Write,MCP.Read"
 azd up
 ```
 
-## 🔄 Common Operations
-
-### View Deployed Resources
-```bash
-# List all resources in your environment
-azd env get-values
-
-# Show resource group in Azure Portal
-az group show --name rg-mcp-$(azd env get-value AZURE_ENV_NAME)
-```
-
 ### View Generated API Keys
 ```bash
 # View API keys (if using API-KEY authentication)
@@ -194,35 +183,6 @@ az containerapp logs show \
   --follow
 ```
 
-## 🌍 Multiple Environments
-
-Deploy to multiple environments (dev, staging, prod):
-
-```bash
-# Create and deploy to dev
-azd env new dev
-azd env set AZURE_LOCATION eastus
-azd up
-
-# Create and deploy to staging
-azd env new staging
-azd env set AZURE_LOCATION westus2
-azd up
-
-# Create and deploy to prod
-azd env new prod
-azd env set AZURE_LOCATION westus2
-azd env set REDIS_ENTERPRISE_SKU Balanced_B5
-azd env set MIN_REPLICAS 3
-azd env set MAX_REPLICAS 20
-azd up
-
-# Switch between environments
-azd env select dev
-azd env select staging
-azd env select prod
-```
-
 ## 🧪 Testing Deployment
 
 ```bash
@@ -249,30 +209,6 @@ azd down
 
 # Delete with confirmation
 azd down --force --purge
-```
-
-## 🔧 Troubleshooting
-
-### View Environment Variables
-```bash
-azd env get-values
-```
-
-### Check Deployment Status
-```bash
-azd show
-```
-
-### View Resource Group
-```bash
-RESOURCE_GROUP=$(azd env get-value AZURE_RESOURCE_GROUP)
-az group show --name "$RESOURCE_GROUP"
-```
-
-### Redeploy from Scratch
-```bash
-azd down --force --purge
-azd up
 ```
 
 ## 📖 Additional Resources
