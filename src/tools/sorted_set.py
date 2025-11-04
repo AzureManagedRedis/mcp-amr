@@ -1,5 +1,3 @@
-from typing import Optional
-
 from redis.exceptions import RedisError
 
 from src.common.connection import RedisConnectionManager, run_redis_command
@@ -8,7 +6,7 @@ from src.common.server import mcp
 
 @mcp.tool()
 async def zadd(
-    key: str, score: float, member: str, expiration: Optional[int] = None
+    key: str, score: float, member: str, expiration: int = 0
 ) -> str:
     """Add a member to a Redis sorted set with an optional expiration time.
 
@@ -16,7 +14,7 @@ async def zadd(
         key (str): The sorted set key.
         score (float): The score of the member.
         member (str): The member to add.
-        expiration (int, optional): Expiration time in seconds.
+        expiration (int): Expiration time in seconds. Use 0 for no expiration (default: 0).
 
     Returns:
         str: Confirmation message or an error message.
@@ -24,10 +22,10 @@ async def zadd(
     try:
         r = RedisConnectionManager.get_connection()
         await run_redis_command(r.zadd, key, {member: score})
-        if expiration:
+        if expiration and expiration > 0:
             await run_redis_command(r.expire, key, expiration)
         return f"Successfully added {member} to {key} with score {score}" + (
-            f" and expiration {expiration} seconds" if expiration else ""
+            f" and expiration {expiration} seconds" if expiration and expiration > 0 else ""
         )
     except RedisError as e:
         return f"Error adding to sorted set {key}: {str(e)}"

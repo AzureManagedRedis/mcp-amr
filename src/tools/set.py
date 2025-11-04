@@ -1,4 +1,5 @@
-from typing import Union, List, Optional
+import json
+from typing import Union, List
 
 from redis.exceptions import RedisError
 
@@ -7,13 +8,13 @@ from src.common.server import mcp
 
 
 @mcp.tool()
-async def sadd(name: str, value: str, expire_seconds: Optional[int] = None) -> str:
+async def sadd(name: str, value: str, expire_seconds: int = 0) -> str:
     """Add a value to a Redis set with an optional expiration time.
 
     Args:
         name: The Redis set key.
         value: The value to add to the set.
-        expire_seconds: Optional; time in seconds after which the set should expire.
+        expire_seconds: Time in seconds after which the set should expire. Use 0 for no expiration (default: 0).
 
     Returns:
         A success message or an error message.
@@ -22,11 +23,11 @@ async def sadd(name: str, value: str, expire_seconds: Optional[int] = None) -> s
         r = RedisConnectionManager.get_connection()
         await run_redis_command(r.sadd, name, value)
 
-        if expire_seconds is not None:
+        if expire_seconds and expire_seconds > 0:
             await run_redis_command(r.expire, name, expire_seconds)
 
         return f"Value '{value}' added successfully to set '{name}'." + (
-            f" Expires in {expire_seconds} seconds." if expire_seconds else ""
+            f" Expires in {expire_seconds} seconds." if expire_seconds and expire_seconds > 0 else ""
         )
     except RedisError as e:
         return f"Error adding value '{value}' to set '{name}': {str(e)}"

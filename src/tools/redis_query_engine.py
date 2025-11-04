@@ -109,7 +109,7 @@ async def vector_search_hash(
     index_name: str = "vector_index",
     vector_field: str = "vector",
     k: int = 5,
-    return_fields: Optional[List[str]] = None,
+    return_fields: List[str] = [],
 ) -> Union[List[Dict[str, Any]], str]:
     """
     Perform a KNN vector similarity search using Redis 8 or later version on vectors stored in hash data structures.
@@ -122,7 +122,7 @@ async def vector_search_hash(
         return_fields: List of fields to return (optional).
 
     Returns:
-        A list of matched documents or an error message.
+        Union[List[Dict[str, Any]], str]: A list of matched documents or an error message.
     """
     try:
         r = RedisConnectionManager.get_connection()
@@ -136,7 +136,7 @@ async def vector_search_hash(
             Query(base_query)
             .sort_by("score")
             .paging(0, k)
-            .return_fields("id", "score", *return_fields or [])
+            .return_fields("id", "score", *return_fields if return_fields else [])
             .dialect(2)
         )
 

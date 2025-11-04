@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Union, Optional
+from typing import Union
 
 from redis.exceptions import RedisError
 from redis import Redis
@@ -12,40 +12,40 @@ from src.common.server import mcp
 @mcp.tool()
 async def set(
     key: str,
-    value: Union[str, bytes, int, float, dict],
-    expiration: Optional[int] = None,
+    value: str,
+    expiration: int = 0,
 ) -> str:
     """Set a Redis string value with an optional expiration time.
 
     Args:
         key (str): The key to set.
-        value (str, bytes, int, float, dict): The value to store.
-        expiration (int, optional): Expiration time in seconds.
+        value (str): The value to store. For JSON objects, pass as JSON string.
+        expiration (int): Expiration time in seconds. Use 0 for no expiration (default: 0).
 
     Returns:
         str: Confirmation message or an error message.
     """
-    if isinstance(value, bytes):
-        encoded_value = value
-    elif isinstance(value, dict):
-        encoded_value = json.dumps(value)
-    else:
-        encoded_value = str(value)
-
-    if isinstance(encoded_value, str):
-        encoded_value = encoded_value.encode("utf-8")
+    # Try to parse as JSON if it looks like JSON
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, dict):
+            encoded_value = json.dumps(parsed).encode("utf-8")
+        else:
+            encoded_value = value.encode("utf-8")
+    except (json.JSONDecodeError, TypeError):
+        encoded_value = value.encode("utf-8")
 
     try:
         r: Redis = RedisConnectionManager.get_connection()
         
         # Run the blocking Redis call in an executor to avoid blocking the event loop
-        if expiration:
+        if expiration and expiration > 0:
             await run_redis_command(r.setex, key, expiration, encoded_value)
         else:
             await run_redis_command(r.set, key, encoded_value)
 
         return f"Successfully set {key}" + (
-            f" with expiration {expiration} seconds" if expiration else ""
+            f" with expiration {expiration} seconds" if expiration and expiration > 0 else ""
         )
     except RedisError as e:
         return f"Error setting key {key}: {str(e)}"
@@ -82,7 +82,7 @@ async def get(key: str) -> Union[str, bytes]:
             except UnicodeDecodeError:
                 return value
 
-        return value
+        return str(value)
     except RedisError as e:
         _logger.error("Redis error retrieving key %s: %s", key, str(e))
         return f"Error retrieving key {key}: {str(e)}"
