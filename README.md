@@ -6,7 +6,7 @@ This repo is a fork of [mcp-redis](https://github.com/redis/mcp-redis) with foll
 - Support server side authentication through API Keys or OAuth
 - Uses Entra Id Authentication by default to connect to Azure Managed Redis instance
 - Removed the use of 'anyOf' keyword which cannot be parsed by some older MCP clients
-- Allows bringing your own vectorizer for vector search use cases
+- Allows bringing your own vectorizer for vector search use cases with the "knowledge store" tools
 - Azd support to host MCP server remotely on Azure Container Apps
 
  Using this MCP Server, you can ask questions like:
