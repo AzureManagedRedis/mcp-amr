@@ -7,7 +7,6 @@ for the Redis MCP Server, enabling remote access via HTTP instead of stdio.
 import asyncio
 import json
 import logging
-import inspect
 from typing import Any, Dict, List, Optional
 
 from starlette.applications import Starlette
@@ -282,7 +281,7 @@ def run_server(host: str = "0.0.0.0", port: int = 8000):
     # Pre-load semantic cache embedding model at startup to avoid first-call delays
     try:
         logger.info("Pre-loading semantic cache embedding model...")
-        from src.tools.semantic_cache import _get_vectorizer
+        from src.tools.knowledge_store import _get_vectorizer
         vectorizer = _get_vectorizer()
         logger.info(f"Semantic cache model pre-loaded successfully (dims={vectorizer.dims})")
     except Exception as e:

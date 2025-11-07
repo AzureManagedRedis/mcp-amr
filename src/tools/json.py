@@ -1,5 +1,4 @@
 import json
-from typing import Any
 from redis.exceptions import RedisError
 
 from src.common.connection import RedisConnectionManager, run_redis_command

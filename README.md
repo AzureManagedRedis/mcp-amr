@@ -3,6 +3,7 @@ Azure Managed Redis MCP Server provides a natural language interface for agentic
 
 This repo is a fork of [mcp-redis](https://github.com/redis/mcp-redis) with following updates:
 - Support SSE so that this MCP server can be hosted remotely
+- Support server side authentication through API Keys or OAuth
 - Uses Entra Id Authentication by default to connect to Azure Managed Redis instance
 - Removed the use of 'anyOf' keyword which cannot be parsed by some older MCP clients
 - Allows bringing your own vectorizer for vector search use cases
@@ -28,7 +29,7 @@ This MCP Server provides tools to manage the data stored in Redis.
 - `pub/sub` functionality to publish messages to channels and subscribe to receive them. Useful for real-time notifications, chat applications, or distributing updates to multiple clients.
 - `streams` tools to add, read, and delete from data streams. Useful for event sourcing, activity feeds, or sensor data logging with consumer groups support.
 - `JSON` tools to store, retrieve, and manipulate JSON documents in Redis. Useful for complex nested data structures, document databases, or configuration management with path-based access.
-- 'Semantic cache store' <TODO> add some description about the new tools
+- `knowledge store` tools to store and retrieve data using semantic similarity search with vector embeddings powered by Azure OpenAI. Useful for building RAG systems, semantic caching, question-answering systems, or any application that needs to find relevant information based on meaning rather than exact matches.
 
 Additional tools.
 
