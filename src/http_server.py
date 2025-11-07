@@ -7,13 +7,12 @@ for the Redis MCP Server, enabling remote access via HTTP instead of stdio.
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import Response, JSONResponse
+from starlette.responses import Response
 from starlette.routing import Route
-from starlette.middleware import Middleware
 from sse_starlette import EventSourceResponse
 import uvicorn
 

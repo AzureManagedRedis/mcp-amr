@@ -23,7 +23,7 @@ class RedisMCPServer:
         """
         try:
             self._logger.info("Pre-loading semantic cache embedding model...")
-            from src.tools.semantic_cache import _get_vectorizer
+            from src.tools.knowledge_store import _get_vectorizer
             vectorizer = _get_vectorizer()
             self._logger.info(f"Semantic cache model pre-loaded successfully (dims={vectorizer.dims})")
         except Exception as e:
