@@ -1,6 +1,6 @@
-"""Semantic Caching Tools for Redis MCP Server
+"""Knowledge Store Tools for Redis MCP Server
 
-These tools provide semantic caching capabilities using vector search,
+These tools provide knowledge storage capabilities using vector search,
 allowing you to store and retrieve data based on semantic similarity.
 """
 
@@ -81,14 +81,14 @@ def _get_vectorizer() -> AzureADOpenAITextVectorizer:
 
 
 def _get_or_create_cache(
-    cache_name: str,
+    store_name: str,
     distance_threshold: float = 0.4,
     ttl: Optional[int] = None
 ) -> SemanticCache:
     """Get or create a semantic cache instance.
     
     Args:
-        cache_name: Name of the cache
+        store_name: Name of the knowledge store
         distance_threshold: Maximum vector distance for cache hits (0.0-1.0)
         ttl: Time-to-live in seconds for cache entries
         
@@ -97,7 +97,7 @@ def _get_or_create_cache(
     """
     # Cache key should only include name and distance_threshold, not TTL
     # TTL is applied per-entry during store operations, not at cache level
-    cache_key = f"{cache_name}:{distance_threshold}"
+    cache_key = f"{store_name}:{distance_threshold}"
     
     if cache_key not in _cache_instances:
         # Get sync Redis connection (SemanticCache only supports sync client)
@@ -106,10 +106,10 @@ def _get_or_create_cache(
         # Get pre-loaded vectorizer
         vectorizer = _get_vectorizer()
         
-        _logger.info(f"Creating semantic cache: {cache_name} (threshold={distance_threshold}, ttl={ttl})")
+        _logger.info(f"Creating semantic cache: {store_name} (threshold={distance_threshold}, ttl={ttl})")
         
         _cache_instances[cache_key] = SemanticCache(
-            name=cache_name,
+            name=store_name,
             redis_client=redis_client,
             distance_threshold=distance_threshold,
             ttl=ttl,
@@ -120,21 +120,21 @@ def _get_or_create_cache(
 
 
 @mcp.tool()
-async def semantic_cache_store(
-    cache_name: str,
+async def knowledge_store_put(
+    store_name: str,
     prompt: str,
     response: str,
     metadata: Dict[str, Any] = {},
     distance_threshold: float = 0.4,
     ttl: int = 0
 ) -> str:
-    """Store data in a semantic cache for later retrieval by similarity search.
+    """Store data in a knowledge store for later retrieval by similarity search.
     
     This tool uses vector embeddings to enable semantic search - you can retrieve
     stored data by searching for similar prompts, not just exact matches.
     
     Args:
-        cache_name (str): Name of the cache (e.g., "product-search", "qa-cache")
+        store_name (str): Name of the knowledge store (e.g., "product-search", "qa-store")
         prompt (str): The text content to use for semantic matching (e.g., query, description)
         response (str): The associated response/data to store
         metadata (dict, optional): Additional metadata as key-value pairs
@@ -147,8 +147,8 @@ async def semantic_cache_store(
         
     Example:
         Store a product description:
-        semantic_cache_store(
-            cache_name="products",
+        knowledge_store_put(
+            store_name="products",
             prompt="High-performance laptop with 32GB RAM, RTX 4080, 4K display",
             response="Dell XPS 17 - $2,999",
             metadata={"brand": "Dell", "category": "laptop", "price": 2999},
@@ -158,7 +158,7 @@ async def semantic_cache_store(
     try:
         # Get or create cache in executor to avoid blocking event loop during token manager initialization
         from src.common.connection import run_redis_command
-        cache = await run_redis_command(_get_or_create_cache, cache_name, distance_threshold, ttl if ttl > 0 else None)
+        cache = await run_redis_command(_get_or_create_cache, store_name, distance_threshold, ttl if ttl > 0 else None)
         
         # Pass None for metadata if empty dictionary
         metadata_to_store = metadata if metadata else None
@@ -171,40 +171,40 @@ async def semantic_cache_store(
             metadata=metadata_to_store
         )
         
-        _logger.info(f"Stored entry in cache '{cache_name}': {prompt[:50]}...")
+        _logger.info(f"Stored entry in cache '{store_name}': {prompt[:50]}...")
         
         return (
-            f"✓ Successfully stored in cache '{cache_name}'\n"
+            f"✓ Successfully stored in knowledge store '{store_name}'\n"
             f"Prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}\n"
             f"Response: {response[:100]}{'...' if len(response) > 100 else ''}\n"
             f"TTL: {ttl if ttl > 0 else 'No expiration'}"
         )
         
     except RedisError as e:
-        error_msg = f"Redis error storing in cache '{cache_name}': {str(e)}"
+        error_msg = f"Redis error storing in knowledge store '{store_name}': {str(e)}"
         _logger.error(error_msg)
         return f"✗ {error_msg}"
     except Exception as e:
-        error_msg = f"Error storing in cache '{cache_name}': {str(e)}"
+        error_msg = f"Error storing in knowledge store '{store_name}': {str(e)}"
         _logger.error(error_msg)
         return f"✗ {error_msg}"
 
 
 @mcp.tool()
-async def semantic_cache_search(
-    cache_name: str,
+async def knowledge_store_search(
+    store_name: str,
     query: str,
     num_results: int = 5,
     distance_threshold: float = 0.4,
     return_metadata: bool = True
 ) -> Union[List[Dict[str, Any]], str]:
-    """Search the semantic cache using vector similarity to find relevant entries.
+    """Search the knowledge store using vector similarity to find relevant entries.
     
     This performs a semantic search, finding entries with similar meaning to your query,
     not just exact keyword matches.
     
     Args:
-        cache_name (str): Name of the cache to search
+        store_name (str): Name of the knowledge store to search
         query (str): The search query/prompt to find similar entries
         num_results (int): Maximum number of results to return (default 5)
         distance_threshold (float): Maximum vector distance for matches (0.0-1.0, default 0.4).
@@ -222,8 +222,8 @@ async def semantic_cache_search(
         
     Example:
         Search for laptops:
-        results = semantic_cache_search(
-            cache_name="products",
+        results = knowledge_store_search(
+            store_name="products",
             query="gaming laptop with good graphics card",
             num_results=3
         )
@@ -242,7 +242,7 @@ async def semantic_cache_search(
     try:
         # Get or create cache in executor to avoid blocking event loop during token manager initialization
         from src.common.connection import run_redis_command
-        cache = await run_redis_command(_get_or_create_cache, cache_name, distance_threshold, None)
+        cache = await run_redis_command(_get_or_create_cache, store_name, distance_threshold, None)
         
         # Perform semantic search using sync method wrapped in executor
         return_fields = ["response", "vector_distance"]
@@ -257,10 +257,10 @@ async def semantic_cache_search(
         )
         
         if not results:
-            _logger.info(f"No results found in cache '{cache_name}' for query: {query[:50]}...")
+            _logger.info(f"No results found in cache '{store_name}' for query: {query[:50]}...")
             return []
         
-        _logger.info(f"Found {len(results)} results in cache '{cache_name}' for query: {query[:50]}...")
+        _logger.info(f"Found {len(results)} results in cache '{store_name}' for query: {query[:50]}...")
         
         # Format results as list of dictionaries
         formatted_results = []
@@ -290,22 +290,22 @@ async def semantic_cache_search(
         return formatted_results
         
     except RedisError as e:
-        error_msg = f"Redis error searching cache '{cache_name}': {str(e)}"
+        error_msg = f"Redis error searching knowledge store '{store_name}': {str(e)}"
         _logger.error(error_msg)
         return f"✗ {error_msg}"
     except Exception as e:
-        error_msg = f"Error searching cache '{cache_name}': {str(e)}"
+        error_msg = f"Error searching knowledge store '{store_name}': {str(e)}"
         _logger.error(error_msg)
         return f"✗ {error_msg}"
 
 
 @mcp.tool()
-async def semantic_cache_clear(cache_name: str, distance_threshold: float = 0.4) -> str:
-    """Clear all entries from a semantic cache.
+async def knowledge_store_clear(store_name: str, distance_threshold: float = 0.4) -> str:
+    """Clear all entries from a knowledge store.
     
     Args:
-        cache_name (str): Name of the cache to clear
-        distance_threshold (float): Distance threshold of the cache to clear (default 0.4)
+        store_name (str): Name of the knowledge store to clear
+        distance_threshold (float): Distance threshold of the knowledge store to clear (default 0.4)
     
     Returns:
         str: Success confirmation or error message
@@ -313,45 +313,45 @@ async def semantic_cache_clear(cache_name: str, distance_threshold: float = 0.4)
     try:
         # Get or create cache in executor to avoid blocking event loop during token manager initialization
         from src.common.connection import run_redis_command
-        cache = await run_redis_command(_get_or_create_cache, cache_name, distance_threshold, None)
+        cache = await run_redis_command(_get_or_create_cache, store_name, distance_threshold, None)
         
         # Clear cache using sync method wrapped in executor
         await run_redis_command(cache.clear)
         
-        _logger.info(f"Cleared cache: {cache_name}")
-        return f"✓ Successfully cleared cache '{cache_name}'"
+        _logger.info(f"Cleared cache: {store_name}")
+        return f"✓ Successfully cleared knowledge store '{store_name}'"
         
     except RedisError as e:
-        error_msg = f"Redis error clearing cache '{cache_name}': {str(e)}"
+        error_msg = f"Redis error clearing knowledge store '{store_name}': {str(e)}"
         _logger.error(error_msg)
         return f"✗ {error_msg}"
     except Exception as e:
-        error_msg = f"Error clearing cache '{cache_name}': {str(e)}"
+        error_msg = f"Error clearing knowledge store '{store_name}': {str(e)}"
         _logger.error(error_msg)
         return f"✗ {error_msg}"
 
 
 @mcp.tool()
-async def semantic_cache_info(cache_name: str, distance_threshold: float = 0.4) -> str:
-    """Get information about a semantic cache including entry count and configuration.
+async def knowledge_store_info(store_name: str, distance_threshold: float = 0.4) -> str:
+    """Get information about a knowledge store including entry count and configuration.
     
     Args:
-        cache_name (str): Name of the cache
-        distance_threshold (float): Distance threshold of the cache (default 0.4)
+        store_name (str): Name of the knowledge store
+        distance_threshold (float): Distance threshold of the knowledge store (default 0.4)
     
     Returns:
-        str: Cache statistics and configuration
+        str: Knowledge store statistics and configuration
     """
     try:
         # Get or create cache in executor to avoid blocking event loop during token manager initialization
         from src.common.connection import run_redis_command
-        cache = await run_redis_command(_get_or_create_cache, cache_name, distance_threshold, None)
+        cache = await run_redis_command(_get_or_create_cache, store_name, distance_threshold, None)
         
         # Get index info using sync method wrapped in executor
         info = await run_redis_command(cache.index.info)
         
         output = [
-            f"Semantic Cache Information: '{cache_name}'",
+            f"Knowledge Store Information: '{store_name}'",
             f"\nConfiguration:",
             f"  Index Name: {info.get('index_name', 'N/A')}",
             f"  Distance Threshold: {distance_threshold}",
@@ -364,10 +364,10 @@ async def semantic_cache_info(cache_name: str, distance_threshold: float = 0.4) 
         return "\n".join(output)
         
     except RedisError as e:
-        error_msg = f"Redis error getting cache info for '{cache_name}': {str(e)}"
+        error_msg = f"Redis error getting knowledge store info for '{store_name}': {str(e)}"
         _logger.error(error_msg)
         return f"✗ {error_msg}"
     except Exception as e:
-        error_msg = f"Error getting cache info for '{cache_name}': {str(e)}"
+        error_msg = f"Error getting knowledge store info for '{store_name}': {str(e)}"
         _logger.error(error_msg)
         return f"✗ {error_msg}"
