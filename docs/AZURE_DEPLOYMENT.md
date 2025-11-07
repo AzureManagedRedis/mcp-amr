@@ -57,7 +57,7 @@ The deployment script supports three authentication methods:
 
 1. **Run the deployment script**:
    ```bash
-   ./infra/deploy-redis-stack.sh
+   ./infra/deploy-redis-mcp.sh
    ```
 
 2. **Configure infrastructure** when prompted:
@@ -486,7 +486,7 @@ az containerapp update \
 - **Monitor access**: Enable Azure Monitor for Redis to track authentication and access patterns
 - **Use strong keys**: Use at least RSA 4096-bit keys for production certificates
 
-## 🐳 Container Image Updates & Deployment Best Practices
+## 🐳 Container Image Updates
 
 For production deployments, it's crucial to use unique image tags and follow proper deployment practices.
 
@@ -540,13 +540,6 @@ az acr build \
   .
 ```
 
-**Benefits of using `az acr build`:**
-- No local Docker daemon required
-- Build happens in Azure (faster for large images)
-- Automatic authentication and push to ACR
-- Build logs stored in Azure for auditing
-- Can build from Git repositories directly
-
 ### Updating Container Apps with New Images
 
 #### Method 1: Update Container App Directly
@@ -571,125 +564,3 @@ az deployment group create \
   --template-file infra/container-apps.bicep \
   --parameters @infra/container-apps.parameters.json
 ```
-
-### Blue-Green Deployment Strategy
-
-For zero-downtime deployments:
-
-```bash
-# Create new revision with new image
-az containerapp revision copy \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --from-revision latest \
-  --image $CONTAINER_REGISTRY_NAME.azurecr.io/redis-mcp:$IMAGE_TAG
-
-# Get the new revision name
-NEW_REVISION=$(az containerapp revision list \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --query "[0].name" -o tsv)
-
-# Split traffic between revisions (optional testing phase)
-az containerapp ingress traffic set \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --revision-weight $NEW_REVISION=50 latest=50
-
-# After validation, route all traffic to new revision
-az containerapp ingress traffic set \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --revision-weight $NEW_REVISION=100
-
-# Deactivate old revision
-az containerapp revision deactivate \
-  --name $CONTAINER_APP_NAME \
-  --resource-group $RESOURCE_GROUP \
-  --revision latest
-```
-
-### CI/CD Pipeline Example
-
-Complete GitHub Actions workflow for building and deploying:
-
-```yaml
-name: Build and Deploy Redis MCP Server
-on:
-  push:
-    branches: [main]
-    tags: ['v*']
-
-env:
-  REGISTRY_NAME: your-registry
-  RESOURCE_GROUP: rg-redis-mcp-prod
-  CONTAINER_APP_NAME: redis-mcp-app
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Generate image metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY_NAME }}.azurecr.io/redis-mcp
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=sha,prefix={{branch}}-
-    
-    - uses: azure/docker-login@v1
-      with:
-        login-server: ${{ env.REGISTRY_NAME }}.azurecr.io
-        username: ${{ secrets.REGISTRY_USERNAME }}
-        password: ${{ secrets.REGISTRY_PASSWORD }}
-    
-    - name: Build and push
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-    
-    - name: Deploy to Container Apps
-      run: |
-        az containerapp update \
-          --name ${{ env.CONTAINER_APP_NAME }} \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --image ${{ needs.build.outputs.image-tag }}
-```
-
-### Image Management Best Practices
-
-1. **Use Multi-Stage Builds**: Reduce image size and security surface
-2. **Scan for Vulnerabilities**: Use `az acr scan` or similar tools
-3. **Keep Registry Clean**: Regularly remove old/unused image tags
-4. **Use Image Signing**: Sign images for production verification
-5. **Monitor Image Usage**: Track which images are deployed where
-
-```bash
-# Example: Clean up old images (keep last 10 versions)
-az acr repository show-tags --name $CONTAINER_REGISTRY_NAME --repository redis-mcp \
-  --orderby time_desc --output tsv | tail -n +11 | \
-  xargs -I {} az acr repository delete --name $CONTAINER_REGISTRY_NAME --image redis-mcp:{} --yes
-```
-
----
-
-**🎉 Congratulations!** Your Redis MCP Server is now running on Azure Container Apps with enterprise-grade authentication and deployment practices!

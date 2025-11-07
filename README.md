@@ -53,6 +53,13 @@ curl -fsSL https://aka.ms/install-azd.sh | bash
 azd auth login
 azd up
 ```
+This single command will:
+- ✅ Prompt for environment name, subscription, and location
+- ✅ Deploy Azure Managed Redis with RediSearch and RedisJSON
+- ✅ Deploy Container Apps with the MCP server
+- ✅ Build and push the container image
+- ✅ Configure authentication (NO-AUTH, API-KEY, or OAUTH)
+
 See detailed instructions [here](https://github.com/AzureManagedRedis/mcp-amr/blob/main/infra/README.md)
 
 #### Deploy to Azure with Shell Script
@@ -67,17 +74,6 @@ This script provides full control over the deployment configuration including re
 
 For detailed deployment options, see [docs/AZURE_DEPLOYMENT.md](./docs/AZURE_DEPLOYMENT.md).
 
-To use the official [Redis MCP Docker](https://hub.docker.com/r/mcp/redis) image, just replace your image name (`mcp-redis` in the example above) with `mcp/redis`.
-
-This single command will:
-- ✅ Prompt for environment name, subscription, and location
-- ✅ Deploy Azure Managed Redis with RediSearch and RedisJSON
-- ✅ Deploy Container Apps with the MCP server
-- ✅ Build and push the container image
-- ✅ Configure authentication (NO-AUTH, API-KEY, or OAUTH)
-
-For detailed instructions, see [README.azd.md](./README.azd.md).
-
 ## Testing
 Configure a client list VSCode GitHub Copilot to create MCP client for testing. Edit the `mcp.json` and add:
 
@@ -86,9 +82,9 @@ Configure a client list VSCode GitHub Copilot to create MCP client for testing. 
   "servers": {
     "redis": {
       "type": "http",
-      "url": "https://<your-Redis-MCP-server-url>",
+      "url": "https://<your-Redis-MCP-server-url>/message",
       "headers": {
-        "X-API-Key": "key1"
+        "X-API-Key": "<your-api-key>"
       }
     }
   }
