@@ -177,8 +177,8 @@ async def mcp_message_endpoint(request: Request) -> Response:
         msg_id = message.get("id")
         params = message.get("params", {})
         
-        # Check if this is an SSE session (client sends session ID as query parameter)
-        session_id = request.query_params.get("sessionId")
+        # Check if this is an SSE session (client sends session ID as query parameter or header)
+        session_id = request.query_params.get("sessionId") or request.headers.get("X-Session-Id")
         use_sse = session_id and session_id in _sse_sessions
 
         logger.info(f"Received MCP message: {method} (SSE: {use_sse}, session: {session_id}, message id: {msg_id})")
