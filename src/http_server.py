@@ -2,11 +2,16 @@
 
 This module provides an HTTP server with Server-Sent Events (SSE) transport
 for the Redis MCP Server, enabling remote access via HTTP instead of stdio.
+
+SSE Transport Implementation:
+- GET /sse: Establishes SSE connection, server sends "endpoint" event with "/message" URL
+- POST /message: Client sends JSON-RPC requests, server responds with JSON-RPC responses
 """
 
 import asyncio
 import json
 import logging
+import uuid
 from typing import Any, Dict, List
 
 from starlette.applications import Starlette
@@ -24,6 +29,10 @@ from src.auth import get_auth_middleware
 # Configure logging
 configure_logging()
 logger = logging.getLogger(__name__)
+
+# Store active SSE connections for each session
+# session_id -> asyncio.Queue for sending messages to client
+_sse_sessions: Dict[str, asyncio.Queue] = {}
 
 
 
@@ -77,31 +86,61 @@ async def health_check(request: Request) -> Response:
 async def mcp_sse_endpoint(request: Request) -> EventSourceResponse:
     """SSE endpoint for MCP protocol communication.
     
-    This implements the MCP SSE transport as described in:
-    https://modelcontextprotocol.io/docs/concepts/transports#http-with-sse
+    According to MCP spec, this endpoint:
+    1. Establishes an SSE connection
+    2. Sends an initial "endpoint" event with the message endpoint URL
+    3. Can send "message" events containing JSON-RPC responses
+    4. Keeps connection alive with periodic events
+    
+    Spec: https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse
     """
-    logger.info(f"New SSE connection from {request.client.host if request.client else 'unknown'}")
+    # Generate unique session ID for this connection
+    session_id = str(uuid.uuid4())
+    message_queue = asyncio.Queue()
+    _sse_sessions[session_id] = message_queue
+    
+    logger.info(f"New SSE connection - session: {session_id} from {request.client.host if request.client else 'unknown'}")
     
     async def event_generator():
         """Generate SSE events for MCP communication."""
         try:
-            # Send initial connection event
+            # Send session ID first so client knows which session to use
             yield {
-                "event": "endpoint",
-                "data": "/message"
+                "event": "session",
+                "data": session_id
             }
             
-            # Keep connection alive
+            # Send initial endpoint event as per MCP spec
+            # Include session ID as query parameter for the endpoint URL
+            yield {
+                "event": "endpoint",
+                "data": f"/message?sessionId={session_id}"
+            }
+            
+            # Main event loop: send queued messages and keepalives
             while True:
-                # Send periodic heartbeat to keep connection alive
-                await asyncio.sleep(15)
-                # SSE comment to keep connection alive
-                yield {"comment": "keepalive"}
-                
+                try:
+                    # Wait for message with timeout for keepalive
+                    message = await asyncio.wait_for(message_queue.get(), timeout=15.0)
+                    
+                    # Send message event with JSON-RPC response
+                    yield {
+                        "event": "message",
+                        "data": json.dumps(message)
+                    }
+                    
+                except asyncio.TimeoutError:
+                    # Send keepalive comment to prevent connection timeout
+                    yield {"comment": "keepalive"}
+                    
         except asyncio.CancelledError:
-            logger.info("SSE connection closed")
+            logger.info(f"SSE connection closed - session: {session_id}")
         except Exception as e:
-            logger.error(f"Error in SSE endpoint: {e}", exc_info=True)
+            logger.error(f"Error in SSE endpoint - session: {session_id}: {e}", exc_info=True)
+        finally:
+            # Clean up session
+            if session_id in _sse_sessions:
+                del _sse_sessions[session_id]
     
     return EventSourceResponse(
         event_generator(),
@@ -115,8 +154,14 @@ async def mcp_sse_endpoint(request: Request) -> EventSourceResponse:
 async def mcp_message_endpoint(request: Request) -> Response:
     """Handle MCP JSON-RPC messages.
     
-    This endpoint receives POST requests with MCP protocol messages
-    and returns the server's response.
+    According to MCP spec, this endpoint:
+    1. Receives JSON-RPC requests via POST
+    2. For SSE transport: queues response to be sent via SSE "message" event (returns 202 Accepted)
+    3. For direct HTTP: returns JSON-RPC response immediately (returns 200 OK)
+    
+    The client indicates SSE mode by including the session ID as a query parameter (?sessionId=xxx).
+    
+    Spec: https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse
     """
     try:
         body = await request.body()
@@ -132,10 +177,33 @@ async def mcp_message_endpoint(request: Request) -> Response:
         msg_id = message.get("id")
         params = message.get("params", {})
         
-        logger.info(f"Received MCP message: {method}")
+        # Check if this is an SSE session (client sends session ID as query parameter or header)
+        session_id = request.query_params.get("sessionId") or request.headers.get("X-Session-Id")
+        use_sse = session_id and session_id in _sse_sessions
+
+        logger.info(f"Received MCP message: {method} (SSE: {use_sse}, session: {session_id}, message id: {msg_id})")
         logger.debug(f"Full message: {message}")
         
-        # Handle different MCP methods
+        # Handle notifications (no id field, no response expected)
+        if msg_id is None:
+            logger.debug(f"Handling notification: {method}")
+            
+            if method == "notifications/initialized":
+                # Client has completed initialization
+                logger.info("Client initialization complete")
+            elif method == "notifications/cancelled":
+                # Client cancelled a request
+                logger.info(f"Request cancelled: {params}")
+            else:
+                logger.debug(f"Received notification: {method}")
+            
+            # For notifications, return 204 No Content (no response body)
+            return Response(
+                content="",
+                status_code=204
+            )
+        
+        # Handle different MCP methods (requests that expect responses)
         if method == "initialize":
             response = {
                 "jsonrpc": "2.0",
@@ -174,41 +242,54 @@ async def mcp_message_endpoint(request: Request) -> Response:
             try:
                 result = await call_tool(tool_name, arguments)
                 
+                logger.debug(f"Tool result type: {type(result)}")
+                logger.debug(f"Tool result: {result}")
+                
                 # FastMCP can return either:
-                # 1. A list of TextContent objects directly
-                # 2. A tuple of (content_list, raw_result_dict)
+                # 1. A list of TextContent objects (unstructured output)
+                # 2. A tuple of (unstructured_content, structured_content) when structured_output=True
                 
                 content_list = None
-                if isinstance(result, list):
-                    # Direct list of TextContent objects
-                    content_list = result
-                elif isinstance(result, tuple) and len(result) >= 1:
-                    # Tuple format: extract first element
-                    content_list = result[0]
+                structured_content = None
                 
-                if content_list is not None:
-                    # Convert Pydantic models to JSON-serializable dicts
-                    content = []
-                    for item in content_list:
-                        if hasattr(item, 'model_dump'):
-                            # Convert Pydantic model (TextContent, etc.) to dict
-                            content.append(item.model_dump(exclude_none=True))
-                        elif isinstance(item, dict):
-                            content.append(item)
-                        else:
-                            # Fallback - wrap as text
-                            content.append({"type": "text", "text": str(item)})
+                if isinstance(result, tuple) and len(result) == 2:
+                    # Structured output: tuple of (unstructured, structured)
+                    content_list = result[0]
+                    structured_content = result[1]
+                    logger.debug(f"Tool returned structured output with {len(content_list)} content blocks")
+                elif isinstance(result, list):
+                    # Unstructured output: direct list of TextContent objects
+                    content_list = result
+                    logger.debug(f"Tool returned unstructured output with {len(content_list)} content blocks")
                 else:
-                    # Fallback: wrap unknown result as text
-                    content = [{"type": "text", "text": str(result)}]
+                    # Unknown format - wrap as text
+                    logger.warning(f"Tool returned unexpected format: {type(result)}")
+                    content_list = [{"type": "text", "text": str(result)}]
+                
+                # Convert Pydantic models to JSON-serializable dicts
+                content = []
+                for item in content_list:
+                    if hasattr(item, 'model_dump'):
+                        # Convert Pydantic model (TextContent, EmbeddedResource, etc.) to dict
+                        content.append(item.model_dump(exclude_none=True, mode='json'))
+                    elif isinstance(item, dict):
+                        content.append(item)
+                    else:
+                        # Fallback - wrap as text
+                        content.append({"type": "text", "text": str(item)})
                 
                 # Format result as MCP content
+                result_data = {"content": content}
+                
+                # Add structured content if present
+                if structured_content is not None:
+                    logger.debug(f"Adding structuredContent: {structured_content}")
+                    result_data["structuredContent"] = structured_content
+                
                 response = {
                     "jsonrpc": "2.0",
                     "id": msg_id,
-                    "result": {
-                        "content": content
-                    }
+                    "result": result_data
                 }
             except Exception as tool_error:
                 logger.error(f"Tool execution error: {tool_error}", exc_info=True)
@@ -232,11 +313,33 @@ async def mcp_message_endpoint(request: Request) -> Response:
                 }
             }
         
-        return Response(
-            content=json.dumps(response),
-            media_type="application/json",
-            status_code=200
-        )
+        # Send response based on transport mode
+        if use_sse:
+            # SSE mode: queue response for delivery via SSE, return 202 Accepted
+            try:
+                await _sse_sessions[session_id].put(response)
+                logger.debug(f"Queued response for SSE session: {session_id}")
+                return Response(
+                    content="",
+                    status_code=202  # Accepted
+                )
+            except KeyError:
+                # Session no longer exists
+                logger.warning(f"SSE session {session_id} not found")
+                return Response(
+                    content=json.dumps({
+                        "error": "SSE session not found or expired"
+                    }),
+                    media_type="application/json",
+                    status_code=404
+                )
+        else:
+            # Direct HTTP mode: return response immediately
+            return Response(
+                content=json.dumps(response),
+                media_type="application/json",
+                status_code=200
+            )
         
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in request: {e}")
