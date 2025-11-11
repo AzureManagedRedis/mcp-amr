@@ -242,41 +242,54 @@ async def mcp_message_endpoint(request: Request) -> Response:
             try:
                 result = await call_tool(tool_name, arguments)
                 
+                logger.debug(f"Tool result type: {type(result)}")
+                logger.debug(f"Tool result: {result}")
+                
                 # FastMCP can return either:
-                # 1. A list of TextContent objects directly
-                # 2. A tuple of (content_list, raw_result_dict)
+                # 1. A list of TextContent objects (unstructured output)
+                # 2. A tuple of (unstructured_content, structured_content) when structured_output=True
                 
                 content_list = None
-                if isinstance(result, list):
-                    # Direct list of TextContent objects
-                    content_list = result
-                elif isinstance(result, tuple) and len(result) >= 1:
-                    # Tuple format: extract first element
-                    content_list = result[0]
+                structured_content = None
                 
-                if content_list is not None:
-                    # Convert Pydantic models to JSON-serializable dicts
-                    content = []
-                    for item in content_list:
-                        if hasattr(item, 'model_dump'):
-                            # Convert Pydantic model (TextContent, etc.) to dict
-                            content.append(item.model_dump(exclude_none=True))
-                        elif isinstance(item, dict):
-                            content.append(item)
-                        else:
-                            # Fallback - wrap as text
-                            content.append({"type": "text", "text": str(item)})
+                if isinstance(result, tuple) and len(result) == 2:
+                    # Structured output: tuple of (unstructured, structured)
+                    content_list = result[0]
+                    structured_content = result[1]
+                    logger.debug(f"Tool returned structured output with {len(content_list)} content blocks")
+                elif isinstance(result, list):
+                    # Unstructured output: direct list of TextContent objects
+                    content_list = result
+                    logger.debug(f"Tool returned unstructured output with {len(content_list)} content blocks")
                 else:
-                    # Fallback: wrap unknown result as text
-                    content = [{"type": "text", "text": str(result)}]
+                    # Unknown format - wrap as text
+                    logger.warning(f"Tool returned unexpected format: {type(result)}")
+                    content_list = [{"type": "text", "text": str(result)}]
+                
+                # Convert Pydantic models to JSON-serializable dicts
+                content = []
+                for item in content_list:
+                    if hasattr(item, 'model_dump'):
+                        # Convert Pydantic model (TextContent, EmbeddedResource, etc.) to dict
+                        content.append(item.model_dump(exclude_none=True, mode='json'))
+                    elif isinstance(item, dict):
+                        content.append(item)
+                    else:
+                        # Fallback - wrap as text
+                        content.append({"type": "text", "text": str(item)})
                 
                 # Format result as MCP content
+                result_data = {"content": content}
+                
+                # Add structured content if present
+                if structured_content is not None:
+                    logger.debug(f"Adding structuredContent: {structured_content}")
+                    result_data["structuredContent"] = structured_content
+                
                 response = {
                     "jsonrpc": "2.0",
                     "id": msg_id,
-                    "result": {
-                        "content": content
-                    }
+                    "result": result_data
                 }
             except Exception as tool_error:
                 logger.error(f"Tool execution error: {tool_error}", exc_info=True)
