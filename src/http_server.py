@@ -174,17 +174,40 @@ async def mcp_message_endpoint(request: Request) -> Response:
             try:
                 result = await call_tool(tool_name, arguments)
                 
+                # FastMCP can return either:
+                # 1. A list of TextContent objects directly
+                # 2. A tuple of (content_list, raw_result_dict)
+                
+                content_list = None
+                if isinstance(result, list):
+                    # Direct list of TextContent objects
+                    content_list = result
+                elif isinstance(result, tuple) and len(result) >= 1:
+                    # Tuple format: extract first element
+                    content_list = result[0]
+                
+                if content_list is not None:
+                    # Convert Pydantic models to JSON-serializable dicts
+                    content = []
+                    for item in content_list:
+                        if hasattr(item, 'model_dump'):
+                            # Convert Pydantic model (TextContent, etc.) to dict
+                            content.append(item.model_dump(exclude_none=True))
+                        elif isinstance(item, dict):
+                            content.append(item)
+                        else:
+                            # Fallback - wrap as text
+                            content.append({"type": "text", "text": str(item)})
+                else:
+                    # Fallback: wrap unknown result as text
+                    content = [{"type": "text", "text": str(result)}]
+                
                 # Format result as MCP content
                 response = {
                     "jsonrpc": "2.0",
                     "id": msg_id,
                     "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": str(result)
-                            }
-                        ]
+                        "content": content
                     }
                 }
             except Exception as tool_error:
