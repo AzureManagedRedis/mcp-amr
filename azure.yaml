@@ -136,7 +136,8 @@ hooks:
         # Show deployment info
         FQDN=$(azd env get-value AZURE_CONTAINER_APP_FQDN)
         echo "✅ Deployed: redis-mcp-server:${IMAGE_TAG}"
-        echo "📍 MCP Server: https://${FQDN}/message"
+        echo "📍 MCP SSE Endpoint: https://${FQDN}/sse"
+        echo "📍 MCP Message Endpoint: https://${FQDN}/message"
         echo "🔍 Health check: https://${FQDN}/health"
       continueOnError: false
       interactive: true
@@ -171,7 +172,8 @@ hooks:
         # Show deployment info
         $FQDN = azd env get-value AZURE_CONTAINER_APP_FQDN
         Write-Host "✅ Deployed: redis-mcp-server:${IMAGE_TAG}"
-        Write-Host "📍 MCP Server: https://${FQDN}/message"
+        Write-Host "📍 MCP SSE Endpoint: https://${FQDN}/sse"
+        Write-Host "📍 MCP Message Endpoint: https://${FQDN}/message"
         Write-Host "🔍 Health check: https://${FQDN}/health"
       continueOnError: false
       interactive: true

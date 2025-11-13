@@ -134,7 +134,8 @@ output REDIS_PORT int = resources.outputs.redisDatabasePort
 output AZURE_OPENAI_SERVICE_NAME string = resources.outputs.openAIServiceName
 output AZURE_OPENAI_ENDPOINT string = resources.outputs.openAIEndpoint
 output AZURE_OPENAI_DEPLOYMENT_NAME string = resources.outputs.openAIEmbeddingDeploymentName
-output MCP_SERVER_URL string = 'https://${resources.outputs.containerAppFqdn}/message'
+output MCP_SERVER_SSE_URL string = 'https://${resources.outputs.containerAppFqdn}/sse'
+output MCP_SERVER_MESSAGE_URL string = 'https://${resources.outputs.containerAppFqdn}/message'
 
 // Output authentication method for reference
 output MCP_AUTH_METHOD string = mcpAuthMethod
